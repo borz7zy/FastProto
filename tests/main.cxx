@@ -6,10 +6,24 @@
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/websocket_server.hxx>
+#include <fast_proto/uint_128.hxx>
 #include <future>
 #include <thread>
+#include <random>
 
 using namespace FastProto;
+
+static inline UInt128 make128(uint64_t hi, uint64_t lo) { return { hi, lo }; }
+static inline std::pair<uint64_t,uint64_t> split128_hex(const std::string& hex_no0x) {
+  std::string s = hex_no0x;
+  if (s.size() > 32) s = s.substr(s.size()-32);
+  while (s.size() < 32) s = "0" + s;
+  auto hi_str = s.substr(0, 16);
+  auto lo_str = s.substr(16);
+  uint64_t hi = std::stoull(hi_str, nullptr, 16);
+  uint64_t lo = std::stoull(lo_str, nullptr, 16);
+  return {hi, lo};
+}
 
 // ========== Arg Tests ==========
 
@@ -318,6 +332,189 @@ TEST(NetworkTest, ServerClientEcho) {
   server_thread.join();
 }
 
+// ===== UInt128 =====
+TEST(UInt128_Basics, CtorsAndComparisons) {
+  UInt128 z;
+  EXPECT_EQ(z.hi, 0u);
+  EXPECT_EQ(z.lo, 0u);
+  UInt128 a(123u);
+  EXPECT_EQ(a.hi, 0u);
+  EXPECT_EQ(a.lo, 123u);
+  UInt128 b(5u, 6u);
+  EXPECT_TRUE(b > a);
+  EXPECT_TRUE(a < b);
+  EXPECT_TRUE(a != b);
+  EXPECT_TRUE(b == make128(5u, 6u));
+  EXPECT_TRUE(make128(1,0) > make128(0,~0ull));
+  EXPECT_TRUE(make128(7,0) >= make128(7,0));
+  EXPECT_TRUE(make128(7,0) <= make128(7,0));
+}
+
+TEST(UInt128_Bitwise, AndOrXorNot) {
+  auto a = make128(0x00FF00FF00FF00FFull, 0xAA55AA55AA55AA55ull);
+  auto b = make128(0x0F0F0F0F0F0F0F0Full, 0xFFFF0000FFFF0000ull);
+  EXPECT_EQ((a & b), make128(0x000F000F000F000Full, 0xAA550000AA550000ull));
+  EXPECT_EQ((a | b), make128(0x0FFF0FFF0FFF0FFFull, 0xFFFFAA55FFFFAA55ull));
+  EXPECT_EQ((a ^ b), make128(0x0FF00FF00FF00FF0ull, 0x55AAAA5555AAAA55ull));
+  EXPECT_EQ((~UInt128{0,0}), make128(~0ull, ~0ull));
+}
+
+TEST(UInt128_Shifts, LeftRight) {
+  auto one = make128(0,1);
+  EXPECT_EQ(one << 0, one);
+  EXPECT_EQ(one << 1, make128(0, 2));
+  EXPECT_EQ(one << 63, make128(0, 1ull<<63));
+  EXPECT_EQ(one << 64, make128(1, 0));
+  EXPECT_EQ(one << 65, make128(2, 0));
+  EXPECT_EQ(one << 127, make128(1ull<<63, 0));
+  EXPECT_EQ(one << 128, UInt128::zero());
+
+  auto top = make128(1ull<<63, 0);
+  EXPECT_EQ(top >> 0, top);
+  EXPECT_EQ(top >> 1,  make128(1ull<<62, 0));      // 1<<126
+  EXPECT_EQ(top >> 63, make128(1, 0));             // 1<<64
+  EXPECT_EQ(top >> 64, make128(0, 1ull<<63));      // 1<<63
+  EXPECT_EQ((make128(~0ull, ~0ull) >> 128), UInt128::zero());
+}
+
+TEST(UInt128_AddSub, CarriesAndBorrows) {
+  auto a = make128(0, ~0ull);
+  auto b = make128(0, 1);
+  auto s = a + b;
+  EXPECT_EQ(s, make128(1, 0));
+
+  auto zero = UInt128::zero();
+  auto m1 = zero - b;
+  EXPECT_EQ(m1, make128(~0ull, ~0ull));
+
+  auto x = make128(0x0123456789abcdefull, 0xfedcba9876543210ull);
+  auto y = make128(0, 0x00000000075BCD15ull);
+  EXPECT_EQ((x - y) + y, x);
+  EXPECT_EQ((x + y) - y, x);
+
+  EXPECT_EQ(x + y, make128(0x0123456789abcdefull, 0xfedcba987dafff25ull));
+  EXPECT_EQ(x - y, make128(0x0123456789abcdefull, 0xfedcba986ef864fbull));
+}
+
+TEST(UInt128_Mul, BasicAndVectors) {
+  EXPECT_EQ((UInt128::zero() * UInt128::zero()), UInt128::zero());
+  EXPECT_EQ((make128(0,1) * make128(0,1)), make128(0,1));
+
+  auto max = make128(~0ull, ~0ull);
+  EXPECT_EQ(max * make128(0,2), make128(0xffffffffffffffffull, 0xfffffffffffffffeull));
+
+  auto a = make128(0x0123456789abcdefull, 0xfedcba9876543210ull);
+  auto b = make128(0, 0x00000000075BCD15ull);
+  EXPECT_EQ(a * b, make128(0xd70a3d70a348b557ull, 0x28f5c28f5caeeb50ull));
+}
+
+TEST(UInt128_DivMod, EdgesAndVectors) {
+  auto a = make128(0x0123456789abcdefull, 0xfedcba9876543210ull);
+  auto one = make128(0,1);
+  EXPECT_EQ(a / one, a);
+  EXPECT_EQ(a % one, UInt128::zero());
+  EXPECT_EQ(UInt128::zero() / one, UInt128::zero());
+
+  auto small = make128(0, 42);
+  auto big   = make128(0, 1000);
+  EXPECT_EQ(small / big, UInt128::zero());
+  EXPECT_EQ(small % big, small);
+
+  auto n1 = make128(~0ull, ~0ull);
+  auto d1 = make128(0, ~0ull);
+  EXPECT_EQ(n1 / d1, make128(1,1));
+  EXPECT_EQ(n1 % d1, UInt128::zero());
+
+  auto d = make128(0, 0x00000000075BCD15ull);
+  EXPECT_EQ(a / d, make128(0x27951968ull, 0xB25AC09A9A988E27ull));
+  EXPECT_EQ(a % d, make128(0, 0x51E4DDDull));
+
+  auto n2 = make128(0xdeadbeefcafebabeull, 0x1122334455667788ull);
+  auto d2 = make128(0x1234567890abcdefull, 0x0123456789abcdefull);
+  EXPECT_EQ(n2 / d2, make128(0, 0xC));
+  EXPECT_EQ(n2 % d2, make128(0x0439b14902f1138aull, 0x037af269e158d054ull));
+
+  auto n3 = make128(1ull<<63, 0);
+  auto q3 = make128(0x2aaaaaaaaaaaaaaauLL, 0xaaaaaaaaaaaaaaaauLL);
+  auto r3 = make128(0, 2);
+  EXPECT_EQ(n3 / make128(0,3), q3);
+  EXPECT_EQ(n3 % make128(0,3), r3);
+}
+
+TEST(UInt128_Bits, GetSet) {
+  UInt128 x;
+  x.setBit(0);
+  x.setBit(63);
+  x.setBit(64);
+  x.setBit(127);
+  EXPECT_EQ(x, make128((1ull<<63) | 1ull, (1ull<<63) | 1ull));
+
+  EXPECT_EQ(x.getBit(0), 1u);
+  EXPECT_EQ(x.getBit(1), 0u);
+  EXPECT_EQ(x.getBit(63), 1u);
+  EXPECT_EQ(x.getBit(64), 1u);
+  EXPECT_EQ(x.getBit(127), 1u);
+  EXPECT_EQ(x.getBit(126), 0u);
+}
+
+TEST(UInt128_IO, ToHex) {
+  EXPECT_EQ(UInt128::zero().to_hex(), "0");
+  EXPECT_EQ(make128(0,1).to_hex(), "1");
+  EXPECT_EQ(make128(0,0x10).to_hex(), "10");
+  EXPECT_EQ(make128(0x1,0).to_hex(), "10000000000000000");
+
+  auto v = make128(~0ull, ~0ull) * make128(0,2);
+  EXPECT_EQ(v.to_hex(), "fffffffffffffffffffffffffffffffe");
+}
+
+#if defined(__SIZEOF_INT128__)
+static inline UInt128 from_u128(__uint128_t v) {
+  auto lo = static_cast<uint64_t>(v);
+  auto hi = static_cast<uint64_t>(v >> 64);
+  return make128(hi, lo);
+}
+static inline __uint128_t to_u128(const UInt128& x) {
+  return (static_cast<__uint128_t>(x.hi) << 64) | x.lo;
+}
+
+TEST(UInt128_Randomized, AgainstBuiltinWhenAvailable) {
+  std::mt19937_64 rng(123456789ULL);
+  for (int i = 0; i < 2000; ++i) {
+    uint64_t a_hi = rng(), a_lo = rng();
+    uint64_t b_hi = rng(), b_lo = rng();
+    __uint128_t au = ( (__uint128_t)a_hi << 64 ) | a_lo;
+    __uint128_t bu = ( (__uint128_t)b_hi << 64 ) | b_lo;
+    UInt128 A(a_hi, a_lo), B(b_hi, b_lo);
+
+    EXPECT_EQ(A == B, au == bu);
+    EXPECT_EQ(A <  B, au <  bu);
+    EXPECT_EQ(A >  B, au >  bu);
+    EXPECT_EQ(A <= B, au <= bu);
+    EXPECT_EQ(A >= B, au >= bu);
+
+    EXPECT_EQ(A + B, from_u128(au + bu));
+    EXPECT_EQ(A - B, from_u128(au - bu));
+
+    EXPECT_EQ(A * B, from_u128(au * bu));
+
+    if (b_hi != 0 || b_lo != 0) {
+      EXPECT_EQ(A / B, from_u128(au / bu));
+      EXPECT_EQ(A % B, from_u128(au % bu));
+    }
+
+    auto s = static_cast<unsigned>(rng() % 131);
+    UInt128 expect_l = (s >= 128) ? UInt128::zero() : from_u128(au << s);
+    UInt128 expect_r = (s >= 128) ? UInt128::zero() : from_u128(au >> s);
+    EXPECT_EQ(A << s, expect_l);
+    EXPECT_EQ(A >> s, expect_r);
+
+    EXPECT_EQ((A & B), from_u128(au & bu));
+    EXPECT_EQ((A | B), from_u128(au | bu));
+    EXPECT_EQ((A ^ B), from_u128(au ^ bu));
+    EXPECT_EQ(~A,      from_u128(~au));
+  }
+}
+#endif
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

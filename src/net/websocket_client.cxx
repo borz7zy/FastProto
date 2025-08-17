@@ -1,6 +1,7 @@
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/common.hxx>
 #include <iostream>
+#include <utility>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -9,7 +10,7 @@
 namespace FastProto::net {
 
 WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
-    : host_(host), port_(port) {}
+    : host_(std::move(host)), port_(port) {}
 
 WebSocketClient::~WebSocketClient() {
   running_ = false;
@@ -71,7 +72,7 @@ bool WebSocketClient::send(const FastProto::Packet& pkt) const {
   if (sockfd_ < 0) return false;
 
   const auto buf = common::serialize_packet(pkt);
-  const uint32_t len = static_cast<uint32_t>(buf.size());
+  const auto len = static_cast<uint32_t>(buf.size());
   const uint32_t nlen = htonl(len);
 
   if (common::send_all(sockfd_, reinterpret_cast<const uint8_t*>(&nlen), sizeof(nlen)) <= 0)
