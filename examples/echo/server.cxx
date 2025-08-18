@@ -17,10 +17,12 @@ constexpr uint8_t kDemoKey[32] = {
   0x18,0x19,0x1A,0x1B, 0x1C,0x1D,0x1E,0x1F
 };
 
-constexpr uint32_t OP_ECHO       = 1;
-constexpr uint32_t OP_SUM_I64    = 2;
-constexpr uint32_t OP_ENC_UPPER  = 3;
-constexpr uint32_t OP_GET_UI128  = 4;
+enum Op : uint32_t {
+  ECHO = 0x01,
+  SUM_I64,
+  ENC_UPPER,
+  GET_RAND_UI128
+};
 
 SymKey demo_key() {
   SymKey k{};
@@ -36,13 +38,13 @@ int main(int argc, char** argv) {
 
   WebSocketServer server(port);
 
-  server.register_handler(OP_ECHO, [](const Packet& req, Packet& resp) {
+  server.register_handler(Op::ECHO, [](const Packet& req, Packet& resp) {
     resp.opcode = req.opcode;
     resp.flags  = 0;
     resp.args   = req.args;
   });
 
-  server.register_handler(OP_SUM_I64, [](const Packet& req, Packet& resp) {
+  server.register_handler(Op::SUM_I64, [](const Packet& req, Packet& resp) {
     long long sum = 0;
     for (const auto& a : req.args) {
       if (a.type_id == Type::Int64) {
@@ -56,7 +58,7 @@ int main(int argc, char** argv) {
     resp.args.push_back(Arg::make_int64(sum));
   });
 
-  server.register_handler(OP_ENC_UPPER, [](const Packet& req, Packet& resp) {
+  server.register_handler(Op::ENC_UPPER, [](const Packet& req, Packet& resp) {
     resp.opcode = req.opcode;
     resp.args.clear();
 
@@ -85,7 +87,7 @@ int main(int argc, char** argv) {
     resp.args.push_back(Arg::make_string(std::string(out_frame.bytes.begin(), out_frame.bytes.end())));
   });
 
-  server.register_handler(OP_GET_UI128, [](const Packet& req, Packet& resp) {
+  server.register_handler(Op::GET_RAND_UI128, [](const Packet& req, Packet& resp) {
     (void)req;
     resp.opcode = req.opcode;
     resp.flags = 0;

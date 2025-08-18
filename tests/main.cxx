@@ -7,6 +7,7 @@
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/uint_128.hxx>
+#include <fast_proto/crypto/diffie_hellman.hxx>
 #include <future>
 #include <thread>
 #include <random>
@@ -515,6 +516,94 @@ TEST(UInt128_Randomized, AgainstBuiltinWhenAvailable) {
   }
 }
 #endif
+
+TEST(DiffieHellman_RawAPI, PublicKeyHasExpectedSize) {
+  DiffieHellman a;
+  auto pub = a.getRawPublicKey();
+  EXPECT_EQ(pub.size(), static_cast<size_t>(32));
+}
+
+TEST(DiffieHellman_RawAPI, SharedSecretMatchesAndIs32Bytes) {
+  DiffieHellman a, b;
+
+  auto a_pub = a.getRawPublicKey();
+  auto b_pub = b.getRawPublicKey();
+
+  auto s1 = a.computeSharedSecretFromRaw(b_pub.data(), b_pub.size());
+  auto s2 = b.computeSharedSecretFromRaw(a_pub.data(), a_pub.size());
+
+  EXPECT_EQ(s1.size(), static_cast<size_t>(32));
+  EXPECT_EQ(s1, s2);
+}
+
+TEST(DiffieHellman_RawAPI, DifferentPeersLikelyDifferentSecrets) {
+  DiffieHellman a, b, c;
+
+  auto b_pub = b.getRawPublicKey();
+  auto c_pub = c.getRawPublicKey();
+
+  auto ab = a.computeSharedSecretFromRaw(b_pub.data(), b_pub.size());
+  auto ac = a.computeSharedSecretFromRaw(c_pub.data(), c_pub.size());
+
+  ASSERT_EQ(ab.size(), static_cast<size_t>(32));
+  ASSERT_EQ(ac.size(), static_cast<size_t>(32));
+  EXPECT_NE(ab, ac);
+}
+
+TEST(DiffieHellman_RawAPI, InvalidLengthThrows) {
+  DiffieHellman a;
+
+  std::vector<std::uint8_t> zero;                      // 0
+  std::vector<std::uint8_t> short31(31, 0x01);         // 31
+  std::vector<std::uint8_t> long33(33, 0x02);          // 33
+  std::vector<std::uint8_t> long64(64, 0x03);          // 64
+
+  EXPECT_THROW(a.computeSharedSecretFromRaw(zero.data(), zero.size()), std::runtime_error);
+  EXPECT_THROW(a.computeSharedSecretFromRaw(short31.data(), short31.size()), std::runtime_error);
+  EXPECT_THROW(a.computeSharedSecretFromRaw(long33.data(), long33.size()), std::runtime_error);
+  EXPECT_THROW(a.computeSharedSecretFromRaw(long64.data(), long64.size()), std::runtime_error);
+}
+
+TEST(DiffieHellman_RawAPI, MoveSemanticsWork) {
+  DiffieHellman alice;
+  DiffieHellman bob;
+
+  auto bob_pub = bob.getRawPublicKey();
+
+  // move-ctor
+  DiffieHellman bob2(std::move(bob));
+
+  auto s1 = alice.computeSharedSecretFromRaw(bob_pub.data(), bob_pub.size());
+  auto s2 = bob2.computeSharedSecretFromRaw(alice.getRawPublicKey().data(), 32);
+
+  EXPECT_EQ(s1, s2);
+}
+
+TEST(DiffieHellman_Compat, RawAndSPKIProduceSameSecret) {
+  DiffieHellman a, b;
+
+  auto b_pub_raw = b.getRawPublicKey();
+  auto b_pub_spki = b.getPublicKey(); // DER SPKI
+
+  auto s_raw  = a.computeSharedSecretFromRaw(b_pub_raw.data(), b_pub_raw.size());
+  auto s_spki = a.computeSharedSecret(b_pub_spki);
+
+  EXPECT_EQ(s_raw, s_spki);
+}
+
+TEST(DiffieHellman_SPKI, InvalidDERThrows) {
+  DiffieHellman a;
+
+  std::vector<std::uint8_t> empty;
+  EXPECT_THROW(a.computeSharedSecret(empty), std::runtime_error);
+
+  DiffieHellman b;
+  auto der = b.getPublicKey();
+  if (der.size() > 5) {
+    der.resize(der.size() - 5);
+    EXPECT_THROW(a.computeSharedSecret(der), std::runtime_error);
+  }
+}
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

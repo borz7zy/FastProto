@@ -16,10 +16,12 @@ constexpr uint8_t kDemoKey[32] = {
   0x18,0x19,0x1A,0x1B, 0x1C,0x1D,0x1E,0x1F
 };
 
-constexpr uint32_t OP_ECHO       = 1;
-constexpr uint32_t OP_SUM_I64    = 2;
-constexpr uint32_t OP_ENC_UPPER  = 3;
-constexpr uint32_t OP_GET_UI128  = 4;
+enum Op : uint8_t {
+  ECHO = 0x01,
+  SUM_I64,
+  ENC_UPPER,
+  GET_RAND_UI128
+};
 
 SymKey demo_key() {
   SymKey k{};
@@ -62,13 +64,12 @@ int main(const int argc, char** argv) {
   client.set_message_handler([](const Packet& req, Packet&){
     print_packet(req);
 
-    if (req.opcode == OP_GET_UI128 && !req.args.empty() && req.args[0].type_id == Type::UInt128){
-      const auto& resp = req.args[0].value;
+    if (req.opcode == Op::GET_RAND_UI128 && !req.args.empty() && req.args[0].type_id == Type::UInt128) {
       const auto a = req.args[0].as_uint128();
       std::cout << "UInt128 is " << a << "\n";
     }
 
-    if (req.opcode == OP_ENC_UPPER && !req.args.empty() && req.args[0].type_id == Type::String) {
+    if (req.opcode == Op::ENC_UPPER && !req.args.empty() && req.args[0].type_id == Type::String) {
       const auto& frame_bytes = req.args[0].value;
       if (std::vector<uint8_t> pt; decrypt_aead_gcm(demo_key(), frame_bytes.data(), frame_bytes.size(), pt)) {
         const std::string s(pt.begin(), pt.end());
@@ -86,14 +87,14 @@ int main(const int argc, char** argv) {
 
   // 1) ECHO
   Packet echo{};
-  echo.opcode = OP_ECHO;
+  echo.opcode = Op::ECHO;
   echo.args.push_back(Arg::make_string("hello"));
   echo.args.push_back(Arg::make_int64(42));
   (void)client.send(echo);
 
   // 2) SUM_I64
   Packet sum{};
-  sum.opcode = OP_SUM_I64;
+  sum.opcode = Op::SUM_I64;
   sum.args.push_back(Arg::make_int64(10));
   sum.args.push_back(Arg::make_int32(32));
   (void)client.send(sum);
@@ -106,13 +107,13 @@ int main(const int argc, char** argv) {
     std::cerr << "[Client] encrypt failed\n";
   } else {
     Packet enc{};
-    enc.opcode = OP_ENC_UPPER;
+    enc.opcode = Op::ENC_UPPER;
     enc.args.push_back(Arg::make_string(std::string(frame.bytes.begin(), frame.bytes.end())));
     (void)client.send(enc);
   }
 
   Packet randu128{};
-  randu128.opcode = OP_GET_UI128;
+  randu128.opcode = Op::GET_RAND_UI128;
   (void)client.send(randu128);
 
   std::this_thread::sleep_for(std::chrono::seconds(2));
