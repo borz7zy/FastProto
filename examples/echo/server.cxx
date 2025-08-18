@@ -20,8 +20,9 @@ constexpr uint8_t kDemoKey[32] = {
 constexpr uint32_t OP_ECHO       = 1;
 constexpr uint32_t OP_SUM_I64    = 2;
 constexpr uint32_t OP_ENC_UPPER  = 3;
+constexpr uint32_t OP_GET_UI128  = 4;
 
-static SymKey demo_key() {
+SymKey demo_key() {
   SymKey k{};
   std::memcpy(k.bytes, kDemoKey, sizeof(kDemoKey));
   return k;
@@ -82,6 +83,16 @@ int main(int argc, char** argv) {
     }
 
     resp.args.push_back(Arg::make_string(std::string(out_frame.bytes.begin(), out_frame.bytes.end())));
+  });
+
+  server.register_handler(OP_GET_UI128, [](const Packet& req, Packet& resp) {
+    (void)req;
+    resp.opcode = req.opcode;
+    resp.flags = 0;
+    resp.args.clear();
+
+    const UInt128 r = UInt128::random_u128();
+    resp.args.push_back(Arg::make_uint128(r));
   });
 
   std::cout << "[Server] starting on port " << port << " ...\n";

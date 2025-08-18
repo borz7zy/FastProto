@@ -4,6 +4,7 @@
 #include <cassert>
 #include <string>
 #include <ostream>
+#include <random>
 
 struct UInt128 {
   uint64_t hi = 0;
@@ -11,13 +12,30 @@ struct UInt128 {
 
   // --- ctors ---
   constexpr UInt128() = default;
-  constexpr UInt128(uint64_t low) : hi(0), lo(low) {}
+  constexpr explicit UInt128(uint64_t low) : hi(0), lo(low) {}
   constexpr UInt128(uint64_t high, uint64_t low) : hi(high), lo(low) {}
 
   // --- helpers ---
-  static constexpr UInt128 zero() { return UInt128(0, 0); }
-  static constexpr UInt128 one()  { return UInt128(0, 1); }
-  constexpr bool isZero() const { return hi == 0 && lo == 0; }
+  static constexpr UInt128 zero() { return {0, 0}; }
+  static constexpr UInt128 one()  { return {0, 1}; }
+  [[nodiscard]] constexpr bool isZero() const { return hi == 0 && lo == 0; }
+  static UInt128 random_u128() {
+    static thread_local std::mt19937_64 gen([]{
+      std::random_device rd;
+      uint64_t seed = (static_cast<uint64_t>(rd()) << 32) ^ rd();
+      return std::mt19937_64(seed);
+    }());
+    std::uniform_int_distribution<uint64_t> dist;
+    return { dist(gen), dist(gen) }; // {hi, lo}
+  }
+  static std::string u128_to_be(const UInt128& x) {
+    std::string out(16, '\0');
+    for (int i = 0; i < 8; ++i) {
+      out[i]     = static_cast<char>((x.hi >> (8 * (7 - i))) & 0xFF);
+      out[8 + i] = static_cast<char>((x.lo >> (8 * (7 - i))) & 0xFF);
+    }
+    return out;
+  }
 
   // --- comparisons ---
   friend constexpr bool operator==(const UInt128& a, const UInt128& b) {
@@ -33,15 +51,15 @@ struct UInt128 {
 
   // --- bitwise ---
   friend constexpr UInt128 operator&(const UInt128& a, const UInt128& b) {
-    return UInt128(a.hi & b.hi, a.lo & b.lo);
+    return {a.hi & b.hi, a.lo & b.lo};
   }
   friend constexpr UInt128 operator|(const UInt128& a, const UInt128& b) {
-    return UInt128(a.hi | b.hi, a.lo | b.lo);
+    return {a.hi | b.hi, a.lo | b.lo};
   }
   friend constexpr UInt128 operator^(const UInt128& a, const UInt128& b) {
-    return UInt128(a.hi ^ b.hi, a.lo ^ b.lo);
+    return {a.hi ^ b.hi, a.lo ^ b.lo};
   }
-  friend constexpr UInt128 operator~(const UInt128& a) { return UInt128(~a.hi, ~a.lo); }
+  friend constexpr UInt128 operator~(const UInt128& a) { return {~a.hi, ~a.lo}; }
 
   UInt128& operator&=(const UInt128& r) { hi &= r.hi; lo &= r.lo; return *this; }
   UInt128& operator|=(const UInt128& r) { hi |= r.hi; lo |= r.lo; return *this; }
@@ -51,16 +69,16 @@ struct UInt128 {
   friend constexpr UInt128 operator<<(const UInt128& a, unsigned s) {
     if (s >= 128) return UInt128::zero();
     if (s == 0)   return a;
-    if (s >= 64)  return UInt128(a.lo << (s - 64), 0);
+    if (s >= 64)  return {a.lo << (s - 64), 0};
     // 0 < s < 64
-    return UInt128((a.hi << s) | (a.lo >> (64 - s)), a.lo << s);
+    return {(a.hi << s) | (a.lo >> (64 - s)), a.lo << s};
   }
   friend constexpr UInt128 operator>>(const UInt128& a, unsigned s) {
     if (s >= 128) return UInt128::zero();
     if (s == 0)   return a;
-    if (s >= 64)  return UInt128(0, a.hi >> (s - 64));
+    if (s >= 64)  return {0, a.hi >> (s - 64)};
     // 0 < s < 64
-    return UInt128(a.hi >> s, (a.lo >> s) | (a.hi << (64 - s)));
+    return {a.hi >> s, (a.lo >> s) | (a.hi << (64 - s))};
   }
   UInt128& operator<<=(unsigned s) { return *this = (*this) << s; }
   UInt128& operator>>=(unsigned s) { return *this = (*this) >> s; }
@@ -152,21 +170,7 @@ struct UInt128 {
   UInt128& operator/=(const UInt128& r) { return *this = *this / r; }
   UInt128& operator%=(const UInt128& r) { return *this = *this % r; }
 
-  static inline std::pair<UInt128, uint64_t> divmod_u64(const UInt128& n, uint64_t d) {
-    assert(d != 0);
-    __uint128_t rem = 0;
-    UInt128 q;
-    uint64_t r = 0;
-
-    {
-      uint64_t n_hi_hi, n_hi_lo; mul64((uint64_t)1 << 32, (uint64_t)0, n_hi_hi, n_hi_lo); (void)n_hi_hi; (void)n_hi_lo;
-    }
-
-    auto qr = divmod(n, UInt128(0, d));
-    return { qr.first, qr.second.lo };
-  }
-
-  constexpr uint64_t getBit(unsigned idx) const {
+  [[nodiscard]] constexpr uint64_t getBit(unsigned idx) const {
     return (idx < 64) ? ((lo >> idx) & 1u)
                       : ((hi >> (idx - 64)) & 1u);
   }
@@ -175,12 +179,12 @@ struct UInt128 {
     else          hi |= (uint64_t(1) << (idx - 64));
   }
 
-  std::string to_hex() const {
+  [[nodiscard]] std::string to_hex() const {
     static const char* kHex = "0123456789abcdef";
     std::string s(32, '0');
     UInt128 t = *this;
     for (int i = 31; i >= 0; --i) {
-      uint8_t nybble = (uint8_t)(t.lo & 0xF);
+      auto nybble = (uint8_t)(t.lo & 0xF);
       s[i] = kHex[nybble];
       t >>= 4;
     }
