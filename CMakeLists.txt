@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(FastProto LANGUAGES CXX)
+project(FastProto VERSION 0.0.1 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -41,6 +41,7 @@ else()
     $<$<CONFIG:Release>:-O2>
   )
 endif()
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 target_include_directories(${PROJECT_NAME} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
@@ -51,7 +52,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # tests
-
+if(BUILD_TESTING)
 FetchContent_Declare(googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG        v1.17.0
@@ -73,10 +74,13 @@ target_link_libraries(proto_tests PRIVATE
   gtest_main
   robin_hood::robin_hood
 )
+endif()
 
 # EXAMPLES
+if(BUILD_EXAMPLES)
 # echo
 add_executable(example_echo_server examples/echo/server.cxx)
 target_link_libraries(example_echo_server PRIVATE ${PROJECT_NAME} robin_hood::robin_hood)
 add_executable(example_echo_client examples/echo/client.cxx)
 target_link_libraries(example_echo_client PRIVATE ${PROJECT_NAME} robin_hood::robin_hood)
+endif()

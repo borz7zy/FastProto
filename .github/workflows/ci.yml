@@ -1,0 +1,30 @@
+name: CI
+on:
+  push: { branches: [ main ] }
+  pull_request:
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+    steps:
+      - uses: action/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test_ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: ./build/proto_tests
+      - name: Test_macos
+        if: matrix.os == 'macos-latest'
+        run: ./build/proto_tests
+      - name: Test_windows
+        if: matrix.os == 'windows-latest'
+        run: .\build\proto_tests.exe
+      - name: clang-format check (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: git ls-files | grep -E '\.(h|hpp|hh|c|cc|cpp|hxx|cxx)$' | xargs clang-format -Werror --dry-run
