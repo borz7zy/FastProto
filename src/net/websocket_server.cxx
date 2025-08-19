@@ -19,62 +19,107 @@ void WebSocketServer::register_handler(uint32_t opcode, common::PacketHandlerFn 
 }
 
 void WebSocketServer::run() {
+  running_.store(true, std::memory_order_release);
+
   server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd_ < 0) {
-    perror("socket");
+    std::perror("[Server] socket");
+    running_.store(false, std::memory_order_release);
     return;
   }
 
-  constexpr int opt = 1;
-  setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  int opt = 1;
+  ::setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
   sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(port_);
+  addr.sin_family       = AF_INET;
+  addr.sin_addr.s_addr  = (INADDR_ANY);
+  addr.sin_port         = htons(port_);
 
-  if (bind(server_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    perror("bind");
-    close(server_fd_);
+  if (::bind(server_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+    std::perror("[Server] bind");
+    ::close(server_fd_);
+    server_fd_ = -1;
+    running_.store(false, std::memory_order_release);
     return;
   }
 
-  if (listen(server_fd_, 16) < 0) {
-    perror("listen");
-    close(server_fd_);
+  if (::listen(server_fd_, 128) < 0) {
+    std::perror("[Server] listen");
+    ::close(server_fd_);
+    server_fd_ = -1;
+    running_.store(false, std::memory_order_release);
     return;
   }
 
-  running_ = true;
   std::cout << "[Server] Listening on port " << port_ << std::endl;
 
-  int client_id = 0;
-  while (running_) {
+  while (running_.load(std::memory_order_acquire)) {
     sockaddr_in cli_addr{};
     socklen_t cli_len = sizeof(cli_addr);
-    int client_fd = accept(server_fd_, reinterpret_cast<sockaddr*>(&cli_addr), &cli_len);
+
+    auto client_fd = ::accept(server_fd_, reinterpret_cast<sockaddr*>(&cli_addr), &cli_len);
     if (client_fd < 0) {
-      if (running_) perror("accept");
+      int e = errno;
+
+      if (!running_.load(std::memory_order_acquire)) break;
+
+      if(e == EINTR)
+        continue;
+
+      if(e == EBADF)
+        break;
+
+      if(e == EAGAIN || e == EWOULDBLOCK){
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+
+      if (e == EMFILE || e == ENFILE) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+
+      std::cerr << "[Server] accept error: " << std::strerror(e) << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
 
+    const int client_id = next_client_id_.fetch_add(1, std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> lk(clients_mtx_);
+      client_fds_.push_back(client_fd);
+      client_threads_.emplace_back(&WebSocketServer::handle_client, this, client_fd, client_id);
+    }
+
     std::cout << "[Server] Client connected: fd=" << client_fd << std::endl;
-    client_threads_.emplace_back(&WebSocketServer::handle_client, this, client_fd, client_id++);
+  }
+  if (server_fd_ >= 0) {
+    ::close(server_fd_);
+    server_fd_ = -1;
   }
 }
 
 void WebSocketServer::stop() {
-  if (!running_) return;
-  running_ = false;
+  running_.store(false, std::memory_order_release);
 
-  if (server_fd_ >= 0) {
-    close(server_fd_);
+  int fd = server_fd_;
+  if (fd >= 0) {
+    ::shutdown(fd, SHUT_RDWR);
+    ::close(fd);
     server_fd_ = -1;
   }
 
-  for (auto& t : client_threads_) {
-    if (t.joinable()) t.join();
+  std::vector<int> fds;
+  {
+    std::lock_guard lk(clients_mtx_);
+    fds.swap(client_fds_);
   }
+  for (int fd : fds) {
+    ::shutdown(fd, SHUT_RDWR);
+    ::close(fd);
+  }
+  for (auto& t : client_threads_) if (t.joinable()) t.join();
   client_threads_.clear();
 
   std::cout << "[Server] Stopped" << std::endl;
