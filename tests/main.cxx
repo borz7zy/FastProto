@@ -289,6 +289,20 @@ TEST(PacketTest, RoundTrip) {
 
 // ===== Network Tests =====
 
+namespace {
+
+class Defer {
+ public:
+  explicit Defer(std::function<void()> f) : f_(std::move(f)) {}
+  ~Defer() { if (f_) f_(); }
+  Defer(const Defer&) = delete;
+  Defer& operator=(const Defer&) = delete;
+ private:
+  std::function<void()> f_;
+};
+
+}
+
 TEST(NetworkTest, ServerClientEcho) {
   constexpr uint16_t port = 9002;
 
@@ -302,35 +316,41 @@ TEST(NetworkTest, ServerClientEcho) {
 
   std::thread server_thread([&]() { ws_server.run(); });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  ASSERT_TRUE(ws_client.connect());
-
-  Packet req;
-  req.opcode = 0x1234;
-  req.args.push_back(Arg::make_string("hello"));
-
-  ASSERT_TRUE(ws_client.send(req));
+  Defer cleanup([&] {
+    ws_client.disconnect();
+    ws_server.stop();
+    if (server_thread.joinable()) server_thread.join();
+  });
 
   std::promise<Packet> resp_promise;
   auto resp_future = resp_promise.get_future();
 
   ws_client.set_message_handler([&](const Packet& pkt, Packet& /*ignored*/) {
-    resp_promise.set_value(pkt);
+    try {resp_promise.set_value(pkt);}catch(const std::future_error&){}
   });
 
-  auto status = resp_future.wait_for(std::chrono::seconds(1));
-  ASSERT_EQ(status, std::future_status::ready);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  bool connected = false;
+  for(size_t i = 0; i < 50 && !connected; ++i){
+    connected = ws_client.connect();
+    if(!connected)
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  ASSERT_TRUE(connected) << "Client failed to connect to server";
+
+  Packet req;
+  req.opcode = 0x1234;
+  req.args.push_back(Arg::make_string("hello"));
+  ASSERT_TRUE(ws_client.send(req)) << "Client failed to send request";
+
+  auto status = resp_future.wait_for(std::chrono::seconds(2));
+  ASSERT_EQ(status, std::future_status::ready) << "Timed out waiting for echo response";
 
   Packet resp = resp_future.get();
   EXPECT_EQ(resp.opcode, req.opcode);
-  ASSERT_EQ(resp.args.size(), 1);
+  ASSERT_EQ(resp.args.size(), 1u);
   EXPECT_EQ(resp.args[0].as_string(), "hello");
-
-  ws_client.disconnect();
-  ws_server.stop();
-
-  server_thread.join();
 }
 
 // ===== UInt128 =====
