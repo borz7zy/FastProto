@@ -1,4 +1,3 @@
-#define __NET_
 #include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
@@ -26,8 +25,12 @@ void WebSocketServer::run() {
     return;
   }
 
-  int opt = 1;
+  constexpr int opt = 1;
+#ifdef _WIN32
+  ::setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
   ::setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#endif
 
   sockaddr_in addr{};
   addr.sin_family       = AF_INET;
@@ -119,8 +122,14 @@ void WebSocketServer::stop() {
   running_.store(false, std::memory_order_release);
 
   if (server_fd_ >= 0) {
+#ifdef _WIN32
+    ::shutdown(server_fd_, SD_BOTH);
+    ::closesocket(server_fd_);
+    WSACleanup();
+#else
     ::shutdown(server_fd_, SHUT_RDWR);
     ::close(server_fd_);
+#endif
     server_fd_ = -1;
   }
 
@@ -130,8 +139,14 @@ void WebSocketServer::stop() {
     fds.swap(client_fds_);
   }
   for (const int fd_ : fds) {
+#ifdef _WIN32
+    ::shutdown(fd_, SD_BOTH);
+    ::closesocket(fd_);
+    WSACleanup();
+#else
     ::shutdown(fd_, SHUT_RDWR);
     ::close(fd_);
+#endif
   }
   for (auto& t : client_threads_) if (t.joinable()) t.join();
   client_threads_.clear();
@@ -175,16 +190,19 @@ void WebSocketServer::handle_client(int client_fd, int client_id) {
     }
 
     auto out_buf = common::serialize_packet(resp);
-    uint32_t out_len = static_cast<uint32_t>(out_buf.size());
+    const auto out_len = static_cast<uint32_t>(out_buf.size());
     uint32_t out_nlen = htonl(out_len);
 
     if (common::send_all(client_fd, reinterpret_cast<const uint8_t*>(&out_nlen), sizeof(out_nlen)) <= 0) break;
     if (common::send_all(client_fd, out_buf.data(), out_buf.size()) <= 0) break;
   }
 
-  close(client_fd);
+#ifdef _WIN32
+  ::closesocket(client_fd);
+#else
+  ::close(client_fd);
+#endif
   std::cout << "[Server] Client disconnected: id=" << client_id << std::endl;
 }
-
 
 }

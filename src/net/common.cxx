@@ -1,4 +1,3 @@
-#define __SSIZE_T_
 #include <sys/types.h>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
@@ -77,7 +76,11 @@ bool deserialize_packet(const std::vector<uint8_t>& data, FastProto::Packet& pkt
 ssize_t send_all(int sockfd, const uint8_t* data, size_t len) {
   size_t off = 0;
   while (off < len) {
-    ssize_t n = ::send(sockfd, data + off, len - off, 0);
+#ifdef _WIN32
+    const ssize_t n = ::send(sockfd, reinterpret_cast<const char*>(data + off), static_cast<int>(len - off), 0);
+#else
+    const ssize_t n = ::send(sockfd, data + off, len - off, 0);
+#endif
     if (n <= 0) return n;
     off += static_cast<size_t>(n);
   }
@@ -87,7 +90,11 @@ ssize_t send_all(int sockfd, const uint8_t* data, size_t len) {
 ssize_t recv_all(int sockfd, uint8_t* data, size_t len) {
   size_t off = 0;
   while (off < len) {
+#ifdef _WIN32
+    const ssize_t n = ::recv(sockfd, reinterpret_cast<char*>(data + off), len - off, MSG_WAITALL);
+#else
     const ssize_t n = ::recv(sockfd, data + off, len - off, MSG_WAITALL);
+#endif
     if (n <= 0) return n;
     off += static_cast<size_t>(n);
   }

@@ -1,17 +1,11 @@
 #pragma once
 #include <vector>
 #include <memory>
-#include <cstddef>
-#include <cstdint>
 
-#if defined(_WIN32)
-#if defined(FASTPROTO_CRYPTO_BUILD)
-#define FPCRYPTO_API __declspec(dllexport)
+#ifdef _WIN32
+  #define FPCRYPTO_API __declspec(dllexport)
 #else
-#define FPCRYPTO_API __declspec(dllimport)
-#endif
-#else
-#define FPCRYPTO_API __attribute__((visibility("default")))
+  #define FPCRYPTO_API __attribute__((visibility("default")))
 #endif
 
 namespace FastProto::crypto {

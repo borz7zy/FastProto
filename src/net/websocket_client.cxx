@@ -1,4 +1,3 @@
-#define __NET_
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
@@ -8,7 +7,7 @@
 namespace FastProto::net {
 
 WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
-    : host_(std::move(host)), port_(port) {
+    : host_(host), port_(port) {
 #ifdef _WIN32
   WSADATA wsaData;
   int res = WSAStartup(MAKEWORD(2, 2), &wsaData);

@@ -436,10 +436,10 @@ TEST(UInt128_DivMod, EdgesAndVectors) {
   EXPECT_EQ(a % one, UInt128::zero());
   EXPECT_EQ(UInt128::zero() / one, UInt128::zero());
 
-  auto small = make128(0, 42);
+  auto ssmall = make128(0, 42);
   auto big   = make128(0, 1000);
-  EXPECT_EQ(small / big, UInt128::zero());
-  EXPECT_EQ(small % big, small);
+  EXPECT_EQ(ssmall / big, UInt128::zero());
+  EXPECT_EQ(ssmall % big, ssmall);
 
   auto n1 = make128(~0ull, ~0ull);
   auto d1 = make128(0, ~0ull);

@@ -3,11 +3,7 @@
 #include <functional>
 #include <vector>
 #include <fast_proto/fast_proto.hxx>
-#ifndef __SSIZE_T_
-#define __SSIZE_T_
-#endif
 #include <fast_proto/platform.hxx>
-#undef __SSIZE_T_
 
 namespace FastProto::net::common {
 
