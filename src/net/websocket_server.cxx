@@ -1,10 +1,8 @@
+#define __NET_
 #include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/platform.hxx>
 #include <iostream>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 
 namespace FastProto::net {
 
@@ -56,21 +54,38 @@ void WebSocketServer::run() {
 
   while (running_.load(std::memory_order_acquire)) {
     sockaddr_in cli_addr{};
+#ifdef _WIN32
+    int cli_len = sizeof(cli_addr);
+#else
     socklen_t cli_len = sizeof(cli_addr);
+#endif
 
     auto client_fd = ::accept(server_fd_, reinterpret_cast<sockaddr*>(&cli_addr), &cli_len);
     if (client_fd < 0) {
+#ifdef _WIN32
+      int e = WSAGetLastError();
+#else
       int e = errno;
+#endif
 
       if (!running_.load(std::memory_order_acquire)) break;
 
+#ifdef _WIN32
+      if (e == WSAEINTR)
+        continue;
+
+      if(e == WSAEWOULDBLOCK) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+#else
       if(e == EINTR)
         continue;
 
-      if(e == EBADF)
+      if(e == EBADF) // ?
         break;
 
-      if(e == EAGAIN || e == EWOULDBLOCK){
+      if(e == EAGAIN || e == EWOULDBLOCK) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         continue;
       }
@@ -79,7 +94,7 @@ void WebSocketServer::run() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       }
-
+#endif
       std::cerr << "[Server] accept error: " << std::strerror(e) << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
@@ -103,10 +118,9 @@ void WebSocketServer::run() {
 void WebSocketServer::stop() {
   running_.store(false, std::memory_order_release);
 
-  int fd = server_fd_;
-  if (fd >= 0) {
-    ::shutdown(fd, SHUT_RDWR);
-    ::close(fd);
+  if (server_fd_ >= 0) {
+    ::shutdown(server_fd_, SHUT_RDWR);
+    ::close(server_fd_);
     server_fd_ = -1;
   }
 
@@ -115,9 +129,9 @@ void WebSocketServer::stop() {
     std::lock_guard lk(clients_mtx_);
     fds.swap(client_fds_);
   }
-  for (int fd : fds) {
-    ::shutdown(fd, SHUT_RDWR);
-    ::close(fd);
+  for (const int fd_ : fds) {
+    ::shutdown(fd_, SHUT_RDWR);
+    ::close(fd_);
   }
   for (auto& t : client_threads_) if (t.joinable()) t.join();
   client_threads_.clear();

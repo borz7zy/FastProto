@@ -1,22 +1,34 @@
+#define __NET_
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/platform.hxx>
 #include <iostream>
 #include <utility>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 
 namespace FastProto::net {
 
 WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
-    : host_(std::move(host)), port_(port) {}
+    : host_(std::move(host)), port_(port) {
+#ifdef _WIN32
+  WSADATA wsaData;
+  int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
+  if (res != 0) {
+    std::cerr << "WSAStartup failed: " << res << std::endl;
+  }
+#endif
+}
 
 WebSocketClient::~WebSocketClient() {
   running_ = false;
   if (sockfd_ >= 0) {
+#ifdef _WIN32
+    ::shutdown(sockfd_, SD_BOTH);
+    ::closesocket(sockfd_);
+    WSACleanup();
+#else
     ::shutdown(sockfd_, SHUT_RDWR);
     ::close(sockfd_);
+#endif
     sockfd_ = -1;
   }
   if (listen_thread_.joinable()) {
@@ -35,15 +47,27 @@ bool WebSocketClient::connect() {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port_);
 
-  if (inet_pton(AF_INET, host_.c_str(), &addr.sin_addr) <= 0) {
+#ifdef _WIN32
+  if (InetPton(AF_INET, host_.c_str(), &addr.sin_addr) <= 0) {
     perror("inet_pton");
-    close(sockfd_);
+    ::closesocket(sockfd_);
     return false;
   }
+#else
+  if (inet_pton(AF_INET, host_.c_str(), &addr.sin_addr) <= 0) {
+    perror("inet_pton");
+    ::close(sockfd_);
+    return false;
+  }
+#endif
 
   if (::connect(sockfd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
     perror("connect");
-    close(sockfd_);
+#ifdef _WIN32
+    ::closesocket(sockfd_);
+#else
+    ::close(sockfd_);
+#endif
     return false;
   }
 
@@ -57,8 +81,14 @@ bool WebSocketClient::connect() {
 void WebSocketClient::disconnect() {
   running_ = false;
   if (sockfd_ >= 0) {
+#ifdef _WIN32
+    ::shutdown(sockfd_, SD_BOTH);
+    ::closesocket(sockfd_);
+    WSACleanup();
+#else
     ::shutdown(sockfd_, SHUT_RDWR);
     ::close(sockfd_);
+#endif
     sockfd_ = -1;
   }
   if (listen_thread_.joinable()) {

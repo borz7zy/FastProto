@@ -50,6 +50,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   crypto
   ssl
 )
+if (WIN32)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+endif()
+
 
 # tests
 if(BUILD_TESTING)

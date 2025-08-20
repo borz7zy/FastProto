@@ -9,8 +9,19 @@
 
 #ifdef __NET_
 #ifdef _WIN32
-// includes here
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #include <io.h>
 #else
-// includes here
+  #include <unistd.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
 #endif
+#endif
+
+#ifdef _WIN32
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
 #endif
