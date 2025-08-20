@@ -1,7 +1,5 @@
 #define __SSIZE_T_
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
 #include <stdexcept>
