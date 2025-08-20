@@ -38,7 +38,7 @@ WebSocketClient::~WebSocketClient() {
 
 bool WebSocketClient::connect() {
   sockfd_ = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef _WIN32(
+#ifdef _WIN32
   if (sockfd_ == INVALID_SOCKET) {
     const int err = WSAGetLastError();
     std::cout << "[Client] socket error: " << err << "\n";
