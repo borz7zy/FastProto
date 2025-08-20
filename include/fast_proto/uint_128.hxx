@@ -30,7 +30,7 @@ struct UInt128 {
   }
   static std::string u128_to_be(const UInt128& x) {
     std::string out(16, '\0');
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < 8; ++i) {
       out[i]     = static_cast<char>((x.hi >> (8 * (7 - i))) & 0xFF);
       out[8 + i] = static_cast<char>((x.lo >> (8 * (7 - i))) & 0xFF);
     }
@@ -66,14 +66,14 @@ struct UInt128 {
   UInt128& operator^=(const UInt128& r) { hi ^= r.hi; lo ^= r.lo; return *this; }
 
   // --- shifts ---
-  friend constexpr UInt128 operator<<(const UInt128& a, unsigned s) {
+  friend constexpr UInt128 operator<<(const UInt128& a, const unsigned int s) {
     if (s >= 128) return UInt128::zero();
     if (s == 0)   return a;
     if (s >= 64)  return {a.lo << (s - 64), 0};
     // 0 < s < 64
     return {(a.hi << s) | (a.lo >> (64 - s)), a.lo << s};
   }
-  friend constexpr UInt128 operator>>(const UInt128& a, unsigned s) {
+  friend constexpr UInt128 operator>>(const UInt128& a, const unsigned int s) {
     if (s >= 128) return UInt128::zero();
     if (s == 0)   return a;
     if (s >= 64)  return {0, a.hi >> (s - 64)};
@@ -99,7 +99,7 @@ struct UInt128 {
   UInt128& operator+=(const UInt128& r) { return *this = *this + r; }
   UInt128& operator-=(const UInt128& r) { return *this = *this - r; }
 
-  static inline void mul64(uint64_t u, uint64_t v, uint64_t& hi_out, uint64_t& lo_out) {
+  static inline void mul64(const uint64_t u, const uint64_t v, uint64_t& hi_out, uint64_t& lo_out) {
     const uint64_t u1 = u >> 32;
     const uint64_t u0 = u & 0xffffffffu;
     const uint64_t v1 = v >> 32;
@@ -139,7 +139,7 @@ struct UInt128 {
   }
   UInt128& operator*=(const UInt128& r) { return *this = *this * r; }
 
-  static inline std::pair<UInt128, UInt128> divmod(UInt128 n, UInt128 d) {
+  static inline std::pair<UInt128, UInt128> divmod(UInt128 n, const UInt128 d) {
     assert(!d.isZero() && "division by zero");
     if (n < d) return { UInt128::zero(), n };
     if (d.hi == 0 && d.lo == 1) return { n, UInt128::zero() };
@@ -170,26 +170,25 @@ struct UInt128 {
   UInt128& operator/=(const UInt128& r) { return *this = *this / r; }
   UInt128& operator%=(const UInt128& r) { return *this = *this % r; }
 
-  [[nodiscard]] constexpr uint64_t getBit(unsigned idx) const {
+  [[nodiscard]] constexpr uint64_t getBit(const int idx) const {
     return (idx < 64) ? ((lo >> idx) & 1u)
                       : ((hi >> (idx - 64)) & 1u);
   }
-  inline void setBit(unsigned idx) {
-    if (idx < 64) lo |= (uint64_t(1) << idx);
-    else          hi |= (uint64_t(1) << (idx - 64));
+  inline void setBit(const int idx) {
+    if (idx < 64) lo |= (static_cast<uint64_t>(1) << idx);
+    else          hi |= (static_cast<uint64_t>(1) << (idx - 64));
   }
 
   [[nodiscard]] std::string to_hex() const {
-    static const char* kHex = "0123456789abcdef";
+    static auto kHex = "0123456789abcdef";
     std::string s(32, '0');
     UInt128 t = *this;
     for (int i = 31; i >= 0; --i) {
-      auto nybble = (uint8_t)(t.lo & 0xF);
-      s[i] = kHex[nybble];
+      s[static_cast<unsigned int>(i)] = kHex[static_cast<uint8_t>(t.lo & 0xF)];
       t >>= 4;
     }
 
-    auto pos = s.find_first_not_of('0');
+    const auto pos = s.find_first_not_of('0');
     return pos == std::string::npos ? "0" : s.substr(pos);
   }
 };
