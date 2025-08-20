@@ -1,8 +1,8 @@
-#include <openssl/aead.h>
-#include <openssl/rand.h>
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <limits>
+#include <openssl/aead.h>
+#include <openssl/rand.h>
 
 namespace FastProto::crypto {
 

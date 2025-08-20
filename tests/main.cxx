@@ -1,16 +1,16 @@
-#include <gtest/gtest.h>
 #include <chrono>
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
+#include <fast_proto/crypto/diffie_hellman.hxx>
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/uint_128.hxx>
-#include <fast_proto/crypto/diffie_hellman.hxx>
 #include <future>
-#include <thread>
+#include <gtest/gtest.h>
 #include <random>
+#include <thread>
 
 using namespace FastProto;
 

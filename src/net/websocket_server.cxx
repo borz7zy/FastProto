@@ -1,11 +1,21 @@
-#include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/net/websocket_server.hxx>
 #include <fast_proto/platform.hxx>
 #include <iostream>
 
 namespace FastProto::net {
 
-WebSocketServer::WebSocketServer(uint16_t port) : port_(port) {}
+WebSocketServer::WebSocketServer(uint16_t port) : port_(port) {
+#ifdef _WIN32
+  WSADATA wsa_data;
+  const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+  if (wsa_err != 0) {
+    std::cerr << "[Server] WSAStartup failed: " << wsa_err << "\n";
+    running_.store(false, std::memory_order_release);
+    return;
+  }
+#endif
+}
 
 WebSocketServer::~WebSocketServer() {
   stop();
@@ -18,12 +28,22 @@ void WebSocketServer::register_handler(uint32_t opcode, common::PacketHandlerFn 
 void WebSocketServer::run() {
   running_.store(true, std::memory_order_release);
 
-  server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef _WIN32
+  server_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (server_fd_ == INVALID_SOCKET) {
+    const int err = WSAGetLastError();
+    std::cout << "[Server] socket error: " << err << "\n";
+    running_.store(false, std::memory_order_release);
+    return;
+  }
+#else
+  server_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd_ < 0) {
     std::perror("[Server] socket");
     running_.store(false, std::memory_order_release);
     return;
   }
+#endif
 
   constexpr int opt = 1;
 #ifdef _WIN32
@@ -39,21 +59,32 @@ void WebSocketServer::run() {
 
   if (::bind(server_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
     std::perror("[Server] bind");
+#ifdef _WIN32
+    ::closesocket(server_fd_);
+    server_fd_ = INVALID_SOCKET;
+#else
     ::close(server_fd_);
     server_fd_ = -1;
+#endif
     running_.store(false, std::memory_order_release);
     return;
   }
 
   if (::listen(server_fd_, 128) < 0) {
     std::perror("[Server] listen");
+
+#ifdef _WIN32
+    ::closesocket(server_fd_);
+    server_fd_ = INVALID_SOCKET;
+#else
     ::close(server_fd_);
     server_fd_ = -1;
+#endif
     running_.store(false, std::memory_order_release);
     return;
   }
 
-  std::cout << "[Server] Listening on port " << port_ << std::endl;
+  std::cout << "[Server] Listening on port " << port_ << "\n";
 
   while (running_.load(std::memory_order_acquire)) {
     sockaddr_in cli_addr{};
@@ -98,7 +129,7 @@ void WebSocketServer::run() {
         continue;
       }
 #endif
-      std::cerr << "[Server] accept error: " << std::strerror(e) << std::endl;
+      std::cerr << "[Server] accept error: " << std::strerror(e) << "\n";
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
@@ -110,11 +141,16 @@ void WebSocketServer::run() {
       client_threads_.emplace_back(&WebSocketServer::handle_client, this, client_fd, client_id);
     }
 
-    std::cout << "[Server] Client connected: fd=" << client_fd << std::endl;
+    std::cout << "[Server] Client connected: fd=" << client_fd << "\n";
   }
   if (server_fd_ >= 0) {
+#ifdef _WIN32
+    ::closesocket(server_fd_);
+    server_fd_ = INVALID_SOCKET;
+#else
     ::close(server_fd_);
     server_fd_ = -1;
+#endif
   }
 }
 
@@ -126,11 +162,12 @@ void WebSocketServer::stop() {
     ::shutdown(server_fd_, SD_BOTH);
     ::closesocket(server_fd_);
     WSACleanup();
+    server_fd_ = INVALID_SOCKET;
 #else
     ::shutdown(server_fd_, SHUT_RDWR);
     ::close(server_fd_);
-#endif
     server_fd_ = -1;
+#endif
   }
 
   std::vector<int> fds;
@@ -151,7 +188,7 @@ void WebSocketServer::stop() {
   for (auto& t : client_threads_) if (t.joinable()) t.join();
   client_threads_.clear();
 
-  std::cout << "[Server] Stopped" << std::endl;
+  std::cout << "[Server] Stopped" << "\n";
 }
 
 void WebSocketServer::handle_client(int client_fd, int client_id) {
@@ -178,8 +215,8 @@ void WebSocketServer::handle_client(int client_fd, int client_id) {
                 << static_cast<int>(buf[0]) << " "
                 << static_cast<int>(buf[1]) << " "
                 << static_cast<int>(buf[2]) << " "
-                << static_cast<int>(buf[3])
-                << std::dec << std::endl;
+                << static_cast<int>(buf[3]) << std::dec 
+                << "\n";
       break;
     }
 
@@ -202,7 +239,7 @@ void WebSocketServer::handle_client(int client_fd, int client_id) {
 #else
   ::close(client_fd);
 #endif
-  std::cout << "[Server] Client disconnected: id=" << client_id << std::endl;
+  std::cout << "[Server] Client disconnected: id=" << client_id << "\n";
 }
 
 }

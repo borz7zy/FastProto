@@ -1,6 +1,6 @@
 #pragma once
-#include <vector>
 #include <memory>
+#include <vector>
 
 #ifdef _WIN32
   #define FPCRYPTO_API __declspec(dllexport)

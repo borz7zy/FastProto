@@ -1,7 +1,7 @@
-#include <sys/types.h>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
 #include <stdexcept>
+#include <sys/types.h>
 #include <vector>
 
 namespace FastProto::net::common {

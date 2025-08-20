@@ -1,9 +1,7 @@
-#include <fast_proto/crypto/diffie_hellman.hxx>
-
 #define OPENSSL_NO_ENGINE
-#include <openssl/evp.h>
+#include <fast_proto/crypto/diffie_hellman.hxx>
 #include <openssl/err.h>
-
+#include <openssl/evp.h>
 #include <stdexcept>
 #include <vector>
 

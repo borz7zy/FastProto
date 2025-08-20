@@ -1,10 +1,10 @@
 #pragma once
 
-#include <vector>
-#include <string>
+#include <fast_proto/uint_128.hxx>
 #include <functional>
 #include <robin_hood.h>
-#include <fast_proto/uint_128.hxx>
+#include <string>
+#include <vector>
 
 namespace FastProto {
 

@@ -1,6 +1,6 @@
+#include <cstring>
 #include <fast_proto/fast_proto.hxx>
 #include <stdexcept>
-#include <cstring>
 
 namespace FastProto {
 

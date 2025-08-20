@@ -1,6 +1,9 @@
 cmake-build-*/
 .idea/
+.vs/
 .vscode/
 out/
 build/
+enc_temp_folder/
 .DS_Store
+CMakeSettings.json

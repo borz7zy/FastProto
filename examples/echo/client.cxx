@@ -1,7 +1,7 @@
+#include <cstring>
+#include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/websocket_client.hxx>
-#include <fast_proto/crypto/crypto.hxx>
-#include <cstring>
 #include <iostream>
 
 using namespace FastProto;

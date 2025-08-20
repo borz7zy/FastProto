@@ -1,9 +1,9 @@
 #pragma once
 
-#include <functional>
-#include <vector>
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/platform.hxx>
+#include <functional>
+#include <vector>
 
 namespace FastProto::net::common {
 

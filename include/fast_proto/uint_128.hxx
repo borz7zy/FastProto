@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstdint>
 #include <cassert>
-#include <string>
+#include <cstdint>
 #include <ostream>
 #include <random>
+#include <string>
 
 struct UInt128 {
   uint64_t hi = 0;

@@ -1,5 +1,5 @@
-#include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/net/websocket_client.hxx>
 #include <fast_proto/platform.hxx>
 #include <iostream>
 #include <utility>
@@ -12,7 +12,7 @@ WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
   WSADATA wsaData;
   int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
   if (res != 0) {
-    std::cerr << "WSAStartup failed: " << res << std::endl;
+    std::cerr << "WSAStartup failed: " << res << "\n";
   }
 #endif
 }
@@ -24,11 +24,12 @@ WebSocketClient::~WebSocketClient() {
     ::shutdown(sockfd_, SD_BOTH);
     ::closesocket(sockfd_);
     WSACleanup();
+    sockfd_ = INVALID_SOCKET;
 #else
     ::shutdown(sockfd_, SHUT_RDWR);
     ::close(sockfd_);
-#endif
     sockfd_ = -1;
+#endif
   }
   if (listen_thread_.joinable()) {
     listen_thread_.join();
@@ -37,10 +38,18 @@ WebSocketClient::~WebSocketClient() {
 
 bool WebSocketClient::connect() {
   sockfd_ = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef _WIN32(
+  if (sockfd_ == INVALID_SOCKET) {
+    const int err = WSAGetLastError();
+    std::cout << "[Client] socket error: " << err << "\n";
+    return false;
+  }
+#else
   if (sockfd_ < 0) {
     perror("socket");
     return false;
   }
+#endif
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -73,7 +82,7 @@ bool WebSocketClient::connect() {
   running_ = true;
   listen_thread_ = std::thread(&WebSocketClient::listen_loop, this);
 
-  std::cout << "[Client] Connected to " << host_ << ":" << port_ << std::endl;
+  std::cout << "[Client] Connected to " << host_ << ":" << port_ << "\n";
   return true;
 }
 
@@ -84,21 +93,28 @@ void WebSocketClient::disconnect() {
     ::shutdown(sockfd_, SD_BOTH);
     ::closesocket(sockfd_);
     WSACleanup();
+    sockfd_ = INVALID_SOCKET;
 #else
     ::shutdown(sockfd_, SHUT_RDWR);
     ::close(sockfd_);
-#endif
     sockfd_ = -1;
+#endif
   }
   if (listen_thread_.joinable()) {
     listen_thread_.join();
   }
 
-  std::cout << "[Client] Disconnected" << std::endl;
+  std::cout << "[Client] Disconnected" << "\n";
 }
 
 bool WebSocketClient::send(const FastProto::Packet& pkt) const {
-  if (sockfd_ < 0) return false;
+#ifdef _WIN32
+  if (sockfd_ == INVALID_SOCKET)
+    return false;
+#else
+  if (sockfd_ < 0) 
+    return false;
+#endif
 
   const auto buf = common::serialize_packet(pkt);
   const auto len = static_cast<uint32_t>(buf.size());
@@ -106,6 +122,7 @@ bool WebSocketClient::send(const FastProto::Packet& pkt) const {
 
   if (common::send_all(sockfd_, reinterpret_cast<const uint8_t*>(&nlen), sizeof(nlen)) <= 0)
     return false;
+
   if (common::send_all(sockfd_, buf.data(), buf.size()) <= 0)
     return false;
 
@@ -134,7 +151,7 @@ void WebSocketClient::listen_loop() {
 
     FastProto::Packet pkt;
     if (!common::deserialize_packet(buf, pkt)) {
-      std::cerr << "[Client] Failed to deserialize packet" << std::endl;
+      std::cerr << "[Client] Failed to deserialize packet" << "\n";
       break;
     }
 

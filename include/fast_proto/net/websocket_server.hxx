@@ -1,13 +1,13 @@
 #pragma once
 
-#include <robin_hood.h>
-#include <vector>
-#include <thread>
 #include <atomic>
+#include <fast_proto/net/common.hxx>
+#include <fast_proto/platform.hxx>
 #include <functional>
 #include <mutex>
-
-#include <fast_proto/net/common.hxx>
+#include <robin_hood.h>
+#include <thread>
+#include <vector>
 
 namespace FastProto::net {
 
@@ -31,7 +31,11 @@ private:
   std::vector<int> client_fds_;
   std::atomic<int> next_client_id_{0};
   std::vector<std::thread> client_threads_;
+#ifdef _WIN32
+  SOCKET server_fd_{INVALID_SOCKET};
+#else
   int server_fd_{-1};
+#endif
 };
 
 }

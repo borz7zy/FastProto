@@ -1,12 +1,12 @@
 #pragma once
 
-#include <string>
-#include <thread>
 #include <atomic>
-#include <functional>
-
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/platform.hxx>
+#include <functional>
+#include <string>
+#include <thread>
 
 namespace FastProto::net {
 
@@ -27,7 +27,11 @@ private:
 
   std::string host_;
   uint16_t port_;
+#ifdef _WIN32
+  SOCKET sockfd_{INVALID_SOCKET};
+#else
   int sockfd_{-1};
+#endif
 
   std::atomic<bool> running_{false};
   std::thread listen_thread_;
