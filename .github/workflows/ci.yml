@@ -41,4 +41,9 @@ jobs:
         run: ./build/proto_tests
       - name: Test_windows
         if: matrix.os == 'windows-latest'
-        run: .\build\proto_tests.exe
+        run: |
+          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
+            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
+          } else {
+            Write-Error "proto_tests.exe not found!"
+          }
