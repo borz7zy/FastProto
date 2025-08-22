@@ -2,7 +2,9 @@
 
 #include <atomic>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/platform.hxx>
+#include <fast_proto/uint_128.hxx>
 #include <functional>
 #include <mutex>
 #include <robin_hood.h>
@@ -28,14 +30,10 @@ private:
   std::atomic<bool> running_{false};
   std::mutex clients_mtx_;
   robin_hood::unordered_map<uint32_t, common::PacketHandlerFn> handlers_;
-  std::vector<int> client_fds_;
-  std::atomic<int> next_client_id_{0};
+  std::vector<SocketHandle> client_fds_;
+  std::atomic<unsigned long long int> next_client_id_{0ULL};
   std::vector<std::thread> client_threads_;
-#ifdef _WIN32
-  SOCKET server_fd_{INVALID_SOCKET};
-#else
-  int server_fd_{-1};
-#endif
+  SocketHandle server_fd_;
 };
 
 }

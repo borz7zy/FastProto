@@ -3,6 +3,7 @@
 #include <atomic>
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/common.hxx>
+#include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/platform.hxx>
 #include <functional>
 #include <string>
@@ -27,11 +28,7 @@ private:
 
   std::string host_;
   uint16_t port_;
-#ifdef _WIN32
-  SOCKET sockfd_{INVALID_SOCKET};
-#else
-  int sockfd_{-1};
-#endif
+  SocketHandle sockfd_;
 
   std::atomic<bool> running_{false};
   std::thread listen_thread_;
