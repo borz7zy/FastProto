@@ -2,7 +2,7 @@
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/fast_proto.hxx>
-#include <fast_proto/net/websocket_server.hxx>
+#include <fast_proto/net/tcp_server.hxx>
 #include <iostream>
 
 using namespace FastProto;
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
   uint16_t port = 9000;
   if (argc >= 2) port = static_cast<uint16_t>(std::stoi(argv[1]));
 
-  WebSocketServer server(port);
+  TcpServer server(port);
 
   server.register_handler(Op::ECHO, [](const Packet& req, Packet& resp) {
     resp.opcode = req.opcode;

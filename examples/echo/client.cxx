@@ -1,7 +1,7 @@
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/fast_proto.hxx>
-#include <fast_proto/net/websocket_client.hxx>
+#include <fast_proto/net/tcp_client.hxx>
 #include <iostream>
 
 using namespace FastProto;
@@ -59,7 +59,7 @@ int main(const int argc, char** argv) {
   if (argc >= 2) host = argv[1];
   if (argc >= 3) port = static_cast<uint16_t>(std::stoi(argv[2]));
 
-  WebSocketClient client(host, port);
+  TcpClient client(host, port);
 
   client.set_message_handler([](const Packet& req, Packet&){
     print_packet(req);

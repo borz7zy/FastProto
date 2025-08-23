@@ -1,13 +1,14 @@
 #include <algorithm>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/socket_handle.hxx>
-#include <fast_proto/net/websocket_server.hxx>
+#include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/platform.hxx>
 #include <iostream>
+#include <thread>
 
 namespace FastProto::net {
 
-WebSocketServer::WebSocketServer(uint16_t port) : port_(port), server_fd_() {
+TcpServer::TcpServer(uint16_t port) : port_(port), server_fd_() {
 #ifdef _WIN32
   WSADATA wsa_data;
   const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
@@ -19,15 +20,15 @@ WebSocketServer::WebSocketServer(uint16_t port) : port_(port), server_fd_() {
 #endif
 }
 
-WebSocketServer::~WebSocketServer() {
+TcpServer::~TcpServer() {
   stop();
 }
 
-void WebSocketServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
+void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
   handlers_[opcode] = std::move(fn);
 }
 
-void WebSocketServer::run() {
+void TcpServer::run() {
   running_.store(true, std::memory_order_release);
 
 #ifdef _WIN32
@@ -127,8 +128,8 @@ void WebSocketServer::run() {
       std::lock_guard<std::mutex> lk(clients_mtx_);
       int raw_fd = client.get();
       client_fds_.push_back(std::move(client));
-      client_threads_.emplace_back(&WebSocketServer::handle_client, this,
-                                   raw_fd, client_id);
+      std::thread t(&TcpServer::handle_client, this, raw_fd, client_id);
+      t.detach();
     }
 
     std::cout << "[Server] Client connected: id=" << client_id << "\n";
@@ -137,7 +138,7 @@ void WebSocketServer::run() {
   server_fd_.reset();
 }
 
-void WebSocketServer::stop() {
+void TcpServer::stop() {
   running_.store(false, std::memory_order_release);
 
   server_fd_.reset();
@@ -148,12 +149,6 @@ void WebSocketServer::stop() {
     clients.swap(client_fds_);
   }
 
-  for (auto& t : client_threads_) {
-    if (t.joinable())
-      t.join();
-  }
-  client_threads_.clear();
-
 #ifdef _WIN32
   WSACleanup();
 #endif
@@ -161,7 +156,7 @@ void WebSocketServer::stop() {
   std::cout << "[Server] Stopped" << "\n";
 }
 
-void WebSocketServer::handle_client(int client_fd, int client_id) {
+void TcpServer::handle_client(int client_fd, int client_id) {
   constexpr uint32_t kMaxFrameLen = 32u * 1024u * 1024u;
 
   while (running_) {

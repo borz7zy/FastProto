@@ -4,8 +4,8 @@
 #include <fast_proto/crypto/diffie_hellman.hxx>
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/common.hxx>
-#include <fast_proto/net/websocket_client.hxx>
-#include <fast_proto/net/websocket_server.hxx>
+#include <fast_proto/net/tcp_client.hxx>
+#include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/uint_128.hxx>
 #include <future>
 #include <gtest/gtest.h>
@@ -306,8 +306,8 @@ class Defer {
 TEST(NetworkTest, ServerClientEcho) {
   constexpr uint16_t port = 9002;
 
-  net::WebSocketServer ws_server(port);
-  net::WebSocketClient ws_client("127.0.0.1", port);
+  net::TcpServer ws_server(port);
+  net::TcpClient ws_client("127.0.0.1", port);
 
   ws_server.register_handler(0x1234, [](const Packet& req, Packet& resp) {
     resp.opcode = req.opcode;

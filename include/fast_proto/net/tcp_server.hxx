@@ -13,10 +13,10 @@
 
 namespace FastProto::net {
 
-class WebSocketServer {
+class TcpServer {
 public:
-  explicit WebSocketServer(uint16_t port);
-  ~WebSocketServer();
+  explicit TcpServer(uint16_t port);
+  ~TcpServer();
 
   void register_handler(uint32_t opcode, common::PacketHandlerFn fn);
 
@@ -32,7 +32,6 @@ private:
   robin_hood::unordered_map<uint32_t, common::PacketHandlerFn> handlers_;
   std::vector<SocketHandle> client_fds_;
   std::atomic<unsigned long long int> next_client_id_{0ULL};
-  std::vector<std::thread> client_threads_;
   SocketHandle server_fd_;
 };
 

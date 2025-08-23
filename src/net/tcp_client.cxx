@@ -1,12 +1,12 @@
 ﻿#include <fast_proto/net/common.hxx>
-#include <fast_proto/net/websocket_client.hxx>
+#include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/platform.hxx>
 #include <iostream>
 #include <utility>
 
 namespace FastProto::net {
 
-WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
+TcpClient::TcpClient(const std::string& host, uint16_t port)
     : host_(host), port_(port) {
 #ifdef _WIN32
   WSADATA wsaData;
@@ -17,11 +17,11 @@ WebSocketClient::WebSocketClient(const std::string& host, uint16_t port)
 #endif
 }
 
-WebSocketClient::~WebSocketClient() {
+TcpClient::~TcpClient() {
   disconnect();
 }
 
-bool WebSocketClient::connect() {
+bool TcpClient::connect() {
   SocketHandle sock(::socket(AF_INET, SOCK_STREAM, 0));
   if (!sock.valid()) {
 #ifdef _WIN32
@@ -55,13 +55,13 @@ bool WebSocketClient::connect() {
 
   sockfd_ = std::move(sock);
   running_ = true;
-  listen_thread_ = std::thread(&WebSocketClient::listen_loop, this);
+  listen_thread_ = std::thread(&TcpClient::listen_loop, this);
 
   std::cout << "[Client] Connected to " << host_ << ":" << port_ << "\n";
   return true;
 }
 
-void WebSocketClient::disconnect() {
+void TcpClient::disconnect() {
   running_ = false;
 
   sockfd_.reset();
@@ -77,7 +77,7 @@ void WebSocketClient::disconnect() {
   std::cout << "[Client] Disconnected\n";
 }
 
-bool WebSocketClient::send(const FastProto::Packet& pkt) const {
+bool TcpClient::send(const FastProto::Packet& pkt) const {
   if (!sockfd_.valid())
     return false;
 
@@ -95,11 +95,11 @@ bool WebSocketClient::send(const FastProto::Packet& pkt) const {
 }
 
 
-void WebSocketClient::set_message_handler(common::PacketHandlerFn fn) {
+void TcpClient::set_message_handler(common::PacketHandlerFn fn) {
   handler_ = std::move(fn);
 }
 
-void WebSocketClient::listen_loop() {
+void TcpClient::listen_loop() {
   constexpr uint32_t kMaxFrameLen = 32u * 1024u * 1024u;
 
   while (running_ && sockfd_.valid()) {

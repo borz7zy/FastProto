@@ -11,10 +11,10 @@
 
 namespace FastProto::net {
 
-class WebSocketClient {
+class TcpClient {
 public:
-  explicit WebSocketClient(const std::string& host, uint16_t port);
-  ~WebSocketClient();
+  explicit TcpClient(const std::string& host, uint16_t port);
+  ~TcpClient();
 
   bool connect();
   void disconnect();

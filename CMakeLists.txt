@@ -22,8 +22,8 @@ add_library(${PROJECT_NAME} STATIC
   src/crypto/crypto.cxx
   src/crypto/diffie_hellman.cxx
   src/net/common.cxx
-  src/net/websocket_client.cxx
-  src/net/websocket_server.cxx
+  src/net/tcp_client.cxx
+  src/net/tcp_server.cxx
   src/fast_proto/fast_proto.cxx
 )
 if(MSVC)
