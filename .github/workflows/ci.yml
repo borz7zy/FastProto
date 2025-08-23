@@ -14,40 +14,42 @@ jobs:
       fail-fast: false
       matrix:
         build_type: [Debug, Release]
-        arch: [x86, x86_64, arm64]
-        c_compiler: [cl]
-        cxx_compiler: [cl]
+        arch: [x86, x64, arm64]
 
     steps:
       - uses: actions/checkout@v4
-  
-      - name: Install depends (NASM)
+
+      - name: Install dependencies (NASM)
         run: choco install nasm --yes --params "/InstallDir:C:\nasm"
 
-      - name: Install depends (Nija)
+      - name: Install Ninja
         run: choco install ninja --yes
 
-      - name: Configure
-        run: >
-          cmake -S . -B build
-          -G Ninja
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DBUILD_TESTING=ON
-          -DBENCHMARK_ENABLE_TESTING=OFF
-          -DBORINGSSL_SKIP_TESTS=ON
-          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
-
-      - name: Build
-        run: cmake --build build --parallel 2 --config ${{ matrix.build_type }}
-
-      - name: Test
+      - name: Configure & Build
+        shell: cmd
         run: |
-          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
-            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
-          } else {
-            Write-Error "proto_tests.exe not found!"
-          }
+          if "%{matrix.arch}%"=="x86" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x86
+          ) else if "%{matrix.arch}%"=="x64" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
+          ) else if "%{matrix.arch}%"=="arm64" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" arm64
+          )
+
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=%{matrix.build_type}% -DBUILD_TESTING=ON -DBENCHMARK_ENABLE_TESTING=OFF -DBORINGSSL_SKIP_TESTS=ON
+
+          cmake --build build --parallel 2
+
+      - name: Run tests
+        shell: cmd
+        run: |
+          set BINARY="%GITHUB_WORKSPACE%\build\proto_tests.exe"
+          if exist %BINARY% (
+            %BINARY%
+          ) else (
+            echo "proto_tests.exe not found!"
+            exit /b 1
+          )
 
   build-unix:
     runs-on: ${{ matrix.os }}
