@@ -1,25 +1,65 @@
 name: CI
+
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
+  windows-build:
+    runs-on: windows-latest
+
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         build_type: [Debug, Release]
+        arch: [x86, x86_64, arm64]
+        c_compiler: [cl]
+        cxx_compiler: [cl]
+    steps:
+      - uses: actions/checkout@4
+  
+      - name: Install depends (NASM)
+        run: choco install nasm --yes --params "/InstallDir:C:\nasm"
+
+      - name: Install depends (Nija)
+        run: choco install ninja --yes
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DBUILD_TESTING=ON
+          -DBENCHMARK_ENABLE_TESTING=OFF
+          -DBORINGSSL_SKIP_TESTS=ON
+          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
+
+      - name: Build
+        run: cmake --build build --parallel 2 --config ${{ matrix.build_type }}
+
+      - name: Test
+        run: |
+          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
+            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
+          } else {
+            Write-Error "proto_tests.exe not found!"
+          }
+
+  build-unix:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build_type: [Debug, Release]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Install NASM
-        if: matrix.os == 'windows-latest'
-        run: choco install nasm --yes --params "/InstallDir:C:\nasm"
-      - name: Install Ninja
-        if: matrix.os == 'windows-latest'
-        run: choco install ninja --yes
+  
       - name: Configure
         run: > 
           cmake -S . -B build 
@@ -28,19 +68,10 @@ jobs:
           -DBUILD_TESTING=ON 
           -DBENCHMARK_ENABLE_TESTING=OFF 
           -DBORINGSSL_SKIP_TESTS=ON
+
       - name: Build
         run: cmake --build build --parallel 2 --config ${{ matrix.build_type }}
-      - name: Find binary proto_tests.exe
-        if: matrix.os == 'windows-latest'
-        run: Get-ChildItem -Path . -Recurse -Filter "proto_tests.exe" | Select-Object -ExpandProperty FullName
+
       - name: Test
         if: matrix.os != 'windows-latest'
         run: ./build/proto_tests
-      - name: Test_windows
-        if: matrix.os == 'windows-latest'
-        run: |
-          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
-            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
-          } else {
-            Write-Error "proto_tests.exe not found!"
-          }
