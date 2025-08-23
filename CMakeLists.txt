@@ -40,7 +40,7 @@ if(MSVC)
     /W4
     /permissive-
     $<$<CONFIG:Debug>:/Od /Zi>
-    $<$<CONFIG:Release>:/O2>
+    $<$<CONFIG:Release>:/O2 /wd4701 /wd4703>
   )
 else()
   target_compile_options(${PROJECT_NAME} PRIVATE
