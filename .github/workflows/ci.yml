@@ -17,8 +17,9 @@ jobs:
         arch: [x86, x86_64, arm64]
         c_compiler: [cl]
         cxx_compiler: [cl]
+
     steps:
-      - uses: actions/checkout@4
+      - uses: actions/checkout@v4
   
       - name: Install depends (NASM)
         run: choco install nasm --yes --params "/InstallDir:C:\nasm"
