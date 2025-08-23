@@ -6,6 +6,15 @@ include(FetchContent)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(POLICY CMP0069)
+  cmake_policy(SET CMP0069 NEW)
+endif()
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported OUTPUT ipo_err)
+if(ipo_supported)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+endif()
+
 FetchContent_Declare(robinhood
   GIT_REPOSITORY https://github.com/martinus/robin-hood-hashing.git
   GIT_TAG        3.11.5
@@ -30,6 +39,7 @@ if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE
     /W4
     /permissive-
+    $<$<CONFIG:Debug>:/Od /Zi>
     $<$<CONFIG:Release>:/O2>
   )
 else()
@@ -38,7 +48,8 @@ else()
     -Wextra
     -Wpedantic
     -Wconversion
-    $<$<CONFIG:Release>:-O2>
+    $<$<CONFIG:Debug>:-O0 -g>
+    $<$<CONFIG:Release>:-O3>
   )
 endif()
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
