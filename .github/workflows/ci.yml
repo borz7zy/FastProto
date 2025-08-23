@@ -38,11 +38,26 @@ jobs:
 
           where cl
 
-          cmake -S . -B build -G Ninja ^
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-            -DBUILD_TESTING=ON ^
-            -DBENCHMARK_ENABLE_TESTING=OFF ^
-            -DBORINGSSL_SKIP_TESTS=ON
+          if "${{ matrix.arch }}"=="x86" (
+            cmake -S . -B build -G Ninja ^
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+              -DBUILD_TESTING=ON ^
+              -DBENCHMARK_ENABLE_TESTING=OFF ^
+              -DBORINGSSL_SKIP_TESTS=ON
+          ) else if "${{ matrix.arch }}"=="x64" (
+            cmake -S . -B build -G Ninja ^
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+              -DBUILD_TESTING=ON ^
+              -DBENCHMARK_ENABLE_TESTING=OFF ^
+              -DBORINGSSL_SKIP_TESTS=ON
+          ) else if "${{ matrix.arch }}"=="arm64" (
+            cmake -S . -B build -G Ninja ^
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+              -DBUILD_TESTING=ON ^
+              -DBENCHMARK_ENABLE_TESTING=OFF ^
+              -DBORINGSSL_SKIP_TESTS=ON ^
+              -DCMAKE_SYSTEM_PROCESSOR=ARM64
+          )
 
           cmake --build build --parallel 2
 
