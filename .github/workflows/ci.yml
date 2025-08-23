@@ -36,9 +36,9 @@ jobs:
           -DBORINGSSL_SKIP_TESTS=ON
       - name: Build
         run: cmake --build build --parallel 2
-      - name: Tree dir
+      - name: Find binary proto_tests.exe
         if: matrix.os == 'windows-latest'
-        run: tree
+        run: dir /s /b proto_tests.exe
       - name: Test
         if: matrix.os != 'windows-latest'
         run: ./build/proto_tests
