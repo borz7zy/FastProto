@@ -38,7 +38,7 @@ jobs:
         run: cmake --build build --parallel 2
       - name: Find binary proto_tests.exe
         if: matrix.os == 'windows-latest'
-        run: dir /s /b proto_tests.exe
+        run: Get-ChildItem -Path . -Recurse -Filter "proto_tests.exe" | Select-Object -ExpandProperty FullName
       - name: Test
         if: matrix.os != 'windows-latest'
         run: ./build/proto_tests
