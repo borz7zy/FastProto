@@ -48,7 +48,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
               -DBUILD_TESTING=ON ^
               -DBENCHMARK_ENABLE_TESTING=OFF ^
-              -DBORINGSSL_SKIP_TESTS=ON
+              -DBORINGSSL_SKIP_TESTS=ON ^
               -DBORINGSSL_WARNINGS_AS_ERRORS=OFF
           )
 
