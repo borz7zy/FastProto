@@ -39,7 +39,7 @@ jobs:
           cmake -S . -B build ^
             -G Ninja ^
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-            -DBUILD_TESTING=ON ^
+            -DFASTPROTO_BUILD_TESTING=ON ^
             -DBENCHMARK_ENABLE_TESTING=OFF ^
             -DBORINGSSL_SKIP_TESTS=ON ^
             -DBORINGSSL_WARNINGS_AS_ERRORS=OFF
@@ -63,7 +63,7 @@ jobs:
           cmake -S . -B build 
           -G Ninja 
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} 
-          -DBUILD_TESTING=ON 
+          -DFASTPROTO_BUILD_TESTING=ON 
           -DBENCHMARK_ENABLE_TESTING=OFF 
           -DBORINGSSL_SKIP_TESTS=ON
 
