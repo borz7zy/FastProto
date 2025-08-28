@@ -7,7 +7,6 @@
 #include <fast_proto/uint_128.hxx>
 #include <functional>
 #include <mutex>
-#include <robin_hood.h>
 #include <thread>
 #include <vector>
 
@@ -29,7 +28,7 @@ private:
   uint16_t port_;
   std::atomic<bool> running_{false};
   std::mutex clients_mtx_;
-  robin_hood::unordered_map<uint32_t, common::PacketHandlerFn> handlers_;
+  std::unordered_map<uint32_t, common::PacketHandlerFn> handlers_;
   std::vector<SocketHandle> client_fds_;
   std::atomic<unsigned long long int> next_client_id_{0ULL};
   SocketHandle server_fd_;

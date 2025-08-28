@@ -2,7 +2,7 @@
 
 #include <fast_proto/uint_128.hxx>
 #include <functional>
-#include <robin_hood.h>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -69,7 +69,7 @@ public:
     return true;
   }
 private:
-  robin_hood::unordered_map<uint32_t, HandlerFn> handlers;
+  std::unordered_map<uint32_t, HandlerFn> handlers;
 };
 
 }

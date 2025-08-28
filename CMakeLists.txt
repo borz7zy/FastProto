@@ -15,12 +15,6 @@ if(ipo_supported)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 endif()
 
-FetchContent_Declare(robinhood
-  GIT_REPOSITORY https://github.com/martinus/robin-hood-hashing.git
-  GIT_TAG        3.11.5
-)
-FetchContent_MakeAvailable(robinhood)
-
 FetchContent_Declare(boringssl
   GIT_REPOSITORY https://github.com/google/boringssl.git
   GIT_TAG        0.20250807.0
@@ -60,7 +54,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
-  robin_hood::robin_hood
   crypto
   ssl
 )
@@ -90,7 +83,6 @@ target_link_libraries(proto_tests PRIVATE
   benchmark::benchmark
   gtest
   gtest_main
-  robin_hood::robin_hood
 )
 endif()
 
@@ -98,7 +90,7 @@ endif()
 if(FASTPROTO_BUILD_EXAMPLES)
 # echo
 add_executable(example_echo_server examples/echo/server.cxx)
-target_link_libraries(example_echo_server PRIVATE ${PROJECT_NAME} robin_hood::robin_hood)
+target_link_libraries(example_echo_server PRIVATE ${PROJECT_NAME})
 add_executable(example_echo_client examples/echo/client.cxx)
-target_link_libraries(example_echo_client PRIVATE ${PROJECT_NAME} robin_hood::robin_hood)
+target_link_libraries(example_echo_client PRIVATE ${PROJECT_NAME})
 endif()
