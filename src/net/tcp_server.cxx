@@ -1,14 +1,15 @@
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <fast_proto/logger.hxx>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/platform.hxx>
-#include <fast_proto/logger.hxx>
-#include <thread>
-#include <cerrno>
-#include <system_error>
 #include <format>
 #include <sstream>
+#include <system_error>
+#include <thread>
 
 namespace FastProto::net {
 
