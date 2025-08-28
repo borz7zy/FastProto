@@ -49,6 +49,7 @@ struct Arg {
 };
 
 struct Packet {
+  int source_fd;
   uint32_t opcode = 0;
   uint32_t flags = 0;
   std::vector<Arg> args;

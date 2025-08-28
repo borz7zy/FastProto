@@ -225,6 +225,8 @@ void TcpServer::handle_client(int client_fd, int client_id) {
       break;
     }
 
+    req.source_fd = client_fd;
+
     FastProto::Packet resp;
     auto it = handlers_.find(req.opcode);
     if (it != handlers_.end()) {
