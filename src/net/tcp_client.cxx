@@ -1,8 +1,10 @@
 ﻿#include <fast_proto/net/common.hxx>
 #include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/platform.hxx>
-#include <iostream>
+#include <fast_proto/logger.hxx>
 #include <utility>
+#include <system_error>
+#include <format>
 
 namespace FastProto::net {
 
@@ -12,7 +14,7 @@ TcpClient::TcpClient(const std::string& host, uint16_t port)
   WSADATA wsaData;
   int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
   if (res != 0) {
-    std::cerr << "WSAStartup failed: " << res << "\n";
+    Logger::print_error("FastProto", std::format("[Client] WSAStartup failed: {}", res).c_str());
   }
 #endif
 }
@@ -25,9 +27,14 @@ bool TcpClient::connect() {
   SocketHandle sock(::socket(AF_INET, SOCK_STREAM, 0));
   if (!sock.valid()) {
 #ifdef _WIN32
-    std::cerr << "[Client] socket error: " << WSAGetLastError() << "\n";
+    Logger::print_error(
+        "FastProto",
+        std::format("[Client] socket error: {}", WSAGetLastError()).c_str());
 #else
-    perror("[Client] socket");
+    std::error_code ec(errno, std::system_category());
+    Logger::print_error(
+        "FastProto",
+        std::format("[Client] socket error: {}", ec.message()).c_str());
 #endif
     return false;
   }
@@ -38,7 +45,7 @@ bool TcpClient::connect() {
 
 #ifdef _WIN32
   if (InetPton(AF_INET, host_.c_str(), &addr.sin_addr) <= 0) {
-    std::cerr << "[Client] inet_pton failed\n";
+    Logger::print_error("FastProto", "[Client] inet_pton failed");
     return false;
   }
 #else
@@ -49,7 +56,10 @@ bool TcpClient::connect() {
 #endif
 
   if (::connect(sock.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    perror("[Client] connect");
+    std::error_code ec(errno, std::system_category());
+    Logger::print_error(
+        "FastProto",
+        std::format("[Client] connect error: {}", ec.message()).c_str());
     return false;
   }
 
@@ -57,7 +67,9 @@ bool TcpClient::connect() {
   running_ = true;
   listen_thread_ = std::thread(&TcpClient::listen_loop, this);
 
-  std::cout << "[Client] Connected to " << host_ << ":" << port_ << "\n";
+  Logger::print_debug(
+      "FastProto",
+      std::format("[Client] Connected to {}:{}", host_, port_).c_str());
   return true;
 }
 
@@ -74,7 +86,7 @@ void TcpClient::disconnect() {
   WSACleanup();
 #endif
 
-  std::cout << "[Client] Disconnected\n";
+  Logger::print_debug("FastProto", "[Client] Disconnected");
 }
 
 bool TcpClient::send(const FastProto::Packet& pkt) const {
@@ -119,7 +131,7 @@ void TcpClient::listen_loop() {
 
     FastProto::Packet pkt;
     if (!common::deserialize_packet(buf, pkt)) {
-      std::cerr << "[Client] Failed to deserialize packet\n";
+      Logger::print_error("FastProto", "[Client] Failed to deserialize packet");
       break;
     }
 

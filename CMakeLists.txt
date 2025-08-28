@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME} STATIC
   src/net/tcp_client.cxx
   src/net/tcp_server.cxx
   src/fast_proto/fast_proto.cxx
+  src/logger/logger.cxx
 )
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE
@@ -60,7 +61,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 if (WIN32)
   target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
 endif()
-
+if (ANDROID)
+  target_link_libraries(${PROJECT_NAME} PRIVATE log)
+endif()
 
 # tests
 if(FASTPROTO_BUILD_TESTING)

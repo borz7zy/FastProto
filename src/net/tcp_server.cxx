@@ -3,10 +3,12 @@
 #include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/platform.hxx>
-#include <iostream>
+#include <fast_proto/logger.hxx>
 #include <thread>
 #include <cerrno>
 #include <system_error>
+#include <format>
+#include <sstream>
 
 namespace FastProto::net {
 
@@ -15,7 +17,7 @@ TcpServer::TcpServer(uint16_t port) : port_(port), server_fd_() {
   WSADATA wsa_data;
   const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
   if (wsa_err != 0) {
-    std::cerr << "[Server] WSAStartup failed: " << wsa_err << "\n";
+    Logger::print_error("FastProto", std::format("WSAStartup failed: {}", wsa_err).c_str());
     running_.store(false, std::memory_order_release);
     return;
   }
@@ -56,14 +58,17 @@ void TcpServer::run() {
   SocketHandle srv(::socket(AF_INET, SOCK_STREAM, 0));
   if (!srv.valid()) {
     const int err = WSAGetLastError();
-    std::cerr << "[Server] socket error: " << err << "\n";
+    //std::cerr << "[Server] socket error: " << err << "\n";
+    Logger::print_error("FastProto", std::format("[Server] socket error: {}", err).c_str());
     running_.store(false, std::memory_order_release);
     return;
   }
 #else
   SocketHandle srv(::socket(AF_INET, SOCK_STREAM, 0));
   if (!srv.valid()) {
-    std::perror("[Server] socket");
+    //std::perror("[Server] socket");
+    std::error_code ec(errno, std::system_category());
+    Logger::print_error("FastProto", std::format("[Server] socket error: ", ec.message()).c_str());
     running_.store(false, std::memory_order_release);
     return;
   }
@@ -97,7 +102,7 @@ void TcpServer::run() {
   }
 
   server_fd_ = std::move(srv);
-  std::cout << "[Server] Listening on port " << port_ << "\n";
+  Logger::print_debug("FastProto", std::format("[Server] Listening on port {}", port_).c_str());
 
   while (running_.load(std::memory_order_acquire)) {
     sockaddr_in cli_addr{};
@@ -137,8 +142,11 @@ void TcpServer::run() {
         continue;
       }
 #endif
-      std::cerr << "[Server] accept error: "
-                << std::generic_category().message(e) << " (" << e << ")\n";
+      Logger::print_error("FastProto",
+                          std::format("[Server] accept error: {} ({})",
+                                      std::generic_category().message(e), e)
+                              .c_str());
+
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
@@ -154,7 +162,7 @@ void TcpServer::run() {
       t.detach();
     }
 
-    std::cout << "[Server] Client connected: id=" << client_id << "\n";
+    Logger::print_debug("FastProto", std::format("[Server] Client connected: id={}", client_id).c_str());
   }
 
   server_fd_.reset();
@@ -175,7 +183,7 @@ void TcpServer::stop() {
   WSACleanup();
 #endif
 
-  std::cout << "[Server] Stopped" << "\n";
+  Logger::print_debug("FastProto", "[Server] Stopped");
 }
 
 void TcpServer::handle_client(int client_fd, int client_id) {
@@ -199,11 +207,13 @@ void TcpServer::handle_client(int client_fd, int client_id) {
 
     FastProto::Packet req;
     if (!common::deserialize_packet(buf, req)) {
-      std::cerr << "[Server] Failed to deserialize packet"
-                << " len=" << buf.size() << " magic=" << std::hex
-                << static_cast<int>(buf[0]) << " " << static_cast<int>(buf[1])
-                << " " << static_cast<int>(buf[2]) << " "
-                << static_cast<int>(buf[3]) << std::dec << "\n";
+      std::ostringstream os;
+      os << "[Server] Failed to deserialize packet"
+         << " len=" << buf.size() << " magic=" << std::hex
+         << static_cast<int>(buf[0]) << " " << static_cast<int>(buf[1])
+         << " " << static_cast<int>(buf[2]) << " "
+         << static_cast<int>(buf[3]) << std::dec;
+      Logger::print_error("FastProto", os.str().c_str());
       break;
     }
 
@@ -234,7 +244,7 @@ void TcpServer::handle_client(int client_fd, int client_id) {
     }
   }
 
-  std::cout << "[Server] Client disconnected: id=" << client_id << "\n";
+  Logger::print_debug("FastProto", std::format("[Server] Client disconnected: id={}", client_id).c_str());
 }
 
 }
