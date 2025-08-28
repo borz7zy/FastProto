@@ -15,7 +15,7 @@ using namespace std;
 
 void FastProto::Logger::print_verbose(const char* tag, const char* msg) {
 #ifdef __ANDROID__
-  LOGV(tag, msg);
+  LOGV(tag, "%s", msg);
 #else
   cout << "\"VERBOSE\"[" << tag << "]" << msg << "\n";
 #endif
@@ -23,7 +23,7 @@ void FastProto::Logger::print_verbose(const char* tag, const char* msg) {
 
 void FastProto::Logger::print_debug(const char* tag, const char* msg) {
 #ifdef __ANDROID__
-  LOGD(tag, msg);
+  LOGD(tag, "%s", msg);
 #else
 #ifdef _DEBUG
   cout << "\"DEBUG\"[" << tag << "]" << msg << "\n";
@@ -33,7 +33,7 @@ void FastProto::Logger::print_debug(const char* tag, const char* msg) {
 
 void FastProto::Logger::print_info(const char* tag, const char* msg) {
 #ifdef __ANDROID__
-  LOGI(tag, msg);
+  LOGI(tag, "%s", msg);
 #else
   cout << "\"INFO\"[" << tag << "]" << msg << "\n";
 #endif
@@ -41,7 +41,7 @@ void FastProto::Logger::print_info(const char* tag, const char* msg) {
 
 void FastProto::Logger::print_warning(const char* tag, const char* msg) {
 #ifdef __ANDROID__
-  LOGW(tag, msg);
+  LOGW(tag, "%s", msg);
 #else
   cout << "\"WARNING\"[" << tag << "]" << msg << "\n";
 #endif
@@ -49,7 +49,7 @@ void FastProto::Logger::print_warning(const char* tag, const char* msg) {
 
 void FastProto::Logger::print_error(const char* tag, const char* msg) {
 #ifdef __ANDROID__
-  LOGE(tag, msg);
+  LOGE(tag, "%s", msg);
 #else
   cerr << "\"ERROR\"[" << tag << "] " << msg << "\n";
 #endif
