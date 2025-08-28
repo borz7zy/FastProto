@@ -47,10 +47,15 @@ jobs:
           cmake --build build --parallel --config ${{ matrix.build_type }}
       - name: Test
         run: |
-          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
-            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
-          } else {
-            Write-Error "proto_tests.exe not found!"
+          $exe = Get-ChildItem -Path $PWD -Filter 'proto_tests.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "::error ::Файл proto_tests.exe не найден в рабочей директории $PWD"
+            exit 1
+          }
+          Write-Host "Запуск: $($exe.FullName)"
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) {
+            throw "proto_tests.exe завершился с кодом $LASTEXITCODE"
           }
 
   build-unix:

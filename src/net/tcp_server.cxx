@@ -5,6 +5,8 @@
 #include <fast_proto/platform.hxx>
 #include <iostream>
 #include <thread>
+#include <cerrno>
+#include <system_error>
 
 namespace FastProto::net {
 
@@ -116,7 +118,8 @@ void TcpServer::run() {
         continue;
       }
 #endif
-      std::cerr << "[Server] accept error: " << std::strerror(e) << "\n";
+      std::cerr << "[Server] accept error: "
+                << std::generic_category().message(e) << " (" << e << ")\n";
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
