@@ -39,7 +39,10 @@ void TcpServer::broadcast(const FastProto::Packet& packet) {
   std::vector<SocketHandle> clients_copy;
   {
     std::lock_guard<std::mutex> lk(clients_mtx_);
-    clients_copy = client_fds_;
+    clients_copy.resize(client_fds_.size());
+    //clients_copy = client_fds_;
+    memcpy(clients_copy.data(), client_fds_.data(),
+           sizeof(SocketHandle) * client_fds_.size());
   }
 
   for (auto& client : clients_copy) {
