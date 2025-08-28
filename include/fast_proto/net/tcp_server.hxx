@@ -18,6 +18,7 @@ public:
   ~TcpServer();
 
   void register_handler(uint32_t opcode, common::PacketHandlerFn fn);
+  void broadcast(const FastProto::Packet& packet);
 
   void run();
   void stop();

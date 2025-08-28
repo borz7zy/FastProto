@@ -30,6 +30,25 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
   handlers_[opcode] = std::move(fn);
 }
 
+void TcpServer::broadcast(const FastProto::Packet& packet) {
+  auto out_buf = common::serialize_packet(packet);
+  uint32_t out_nlen = htonl(static_cast<uint32_t>(out_buf.size()));
+
+  std::lock_guard<std::mutex> lk(clients_mtx_);
+  for (auto& client : client_fds_) {
+    int fd = client.get();
+    if (fd < 0)
+      continue;
+
+    if (common::send_all(fd, reinterpret_cast<const uint8_t*>(&out_nlen), sizeof(out_nlen)) <= 0)
+      continue;
+    
+    if (common::send_all(fd, out_buf.data(), out_buf.size()) <= 0)
+      continue;
+
+  }
+}
+
 void TcpServer::run() {
   running_.store(true, std::memory_order_release);
 
