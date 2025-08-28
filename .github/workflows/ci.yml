@@ -47,8 +47,8 @@ jobs:
           cmake --build build --parallel --config ${{ matrix.build_type }}
       - name: Test
         run: |
-          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.txt") {
-            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.txt"
+          if (Test-Path "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe") {
+            & "${{ github.workspace }}\build\${{ matrix.build_type }}\proto_tests.exe"
           } else {
             Write-Error "proto_tests.exe not found!"
           }
