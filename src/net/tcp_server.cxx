@@ -36,8 +36,13 @@ void TcpServer::broadcast(const FastProto::Packet& packet) {
   auto out_buf = common::serialize_packet(packet);
   uint32_t out_nlen = htonl(static_cast<uint32_t>(out_buf.size()));
 
-  std::lock_guard<std::mutex> lk(clients_mtx_);
-  for (auto& client : client_fds_) {
+  std::vector<SocketHandle> clients_copy;
+  {
+    std::lock_guard<std::mutex> lk(clients_mtx_);
+    clients_copy = client_fds_;
+  }
+
+  for (auto& client : clients_copy) {
     int fd = client.get();
     if (fd < 0)
       continue;
