@@ -3,11 +3,19 @@
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <atomic>
+
+#ifdef __cpp_lib_jthread
 #include <stop_token>
+#define HAS_JTHREAD 1
+#else
+#define HAS_JTHREAD 0
+#endif
 
 template<class T>
 class BlockingQueue {
 public:
+#if HAS_JTHREAD
   bool wait_pop(T& out, std::stop_token st) {
     std::unique_lock<std::mutex> lk(m_);
     cv_.wait(lk, st, [&] { return !q_.empty(); });
@@ -18,7 +26,18 @@ public:
     q_.pop_front();
     return true;
   }
+#else
+  bool wait_pop(T& out, std::shared_ptr<std::atomic<bool>> stop_flag) {
+    std::unique_lock<std::mutex> lk(m_);
+    cv_.wait(lk, [&] { return !q_.empty() || stop_flag->load(); });
+    if (q_.empty())
+      return false;
 
+    out = std::move(q_.front());
+    q_.pop_front();
+    return true;
+  }
+#endif
   template <class U>
   void push(U&& v) {
     {
