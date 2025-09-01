@@ -7,6 +7,7 @@
 #include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/uint_128.hxx>
+#include <fast_proto/utils/thread_pool.hxx>
 #include <future>
 #include <gtest/gtest.h>
 #include <random>
@@ -294,14 +295,18 @@ namespace {
 class Defer {
  public:
   explicit Defer(std::function<void()> f) : f_(std::move(f)) {}
-  ~Defer() { if (f_) f_(); }
+  ~Defer() {
+    if (f_)
+      f_();
+  }
   Defer(const Defer&) = delete;
   Defer& operator=(const Defer&) = delete;
+
  private:
   std::function<void()> f_;
 };
 
-}
+} // namespace
 
 TEST(NetworkTest, ServerClientEcho) {
   constexpr uint16_t port = 9002;
@@ -319,22 +324,25 @@ TEST(NetworkTest, ServerClientEcho) {
   Defer cleanup([&] {
     ws_client.disconnect();
     ws_server.stop();
-    if (server_thread.joinable()) server_thread.join();
+    if (server_thread.joinable())
+      server_thread.join();
   });
 
   std::promise<Packet> resp_promise;
   auto resp_future = resp_promise.get_future();
 
-  ws_client.set_message_handler([&](const Packet& pkt, Packet& /*ignored*/) {
-    try {resp_promise.set_value(pkt);}catch(const std::future_error&){}
+  ws_client.set_message_handler([&](const Packet& pkt, Packet& /* ignored */) {
+    try {
+      resp_promise.set_value(pkt);
+    } catch (const std::future_error&) {}
   });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   bool connected = false;
-  for(size_t i = 0; i < 50 && !connected; ++i){
+  for (size_t i = 0; i < 50 && !connected; ++i) {
     connected = ws_client.connect();
-    if(!connected)
+    if (!connected)
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
   ASSERT_TRUE(connected) << "Client failed to connect to server";
@@ -345,7 +353,8 @@ TEST(NetworkTest, ServerClientEcho) {
   ASSERT_TRUE(ws_client.send(req)) << "Client failed to send request";
 
   auto status = resp_future.wait_for(std::chrono::seconds(2));
-  ASSERT_EQ(status, std::future_status::ready) << "Timed out waiting for echo response";
+  ASSERT_EQ(status, std::future_status::ready)
+      << "Timed out waiting for echo response";
 
   Packet resp = resp_future.get();
   EXPECT_EQ(resp.opcode, req.opcode);
