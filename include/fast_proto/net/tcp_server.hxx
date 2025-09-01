@@ -6,11 +6,11 @@
 #include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/platform.hxx>
 #include <fast_proto/uint_128.hxx>
+#include <fast_proto/utils/thread_pool.hxx>
 #include <functional>
 #include <mutex>
 #include <stop_token>
 #include <thread>
-#include "thread_pool.hxx"
 #include <unordered_map>
 #include <vector>
 

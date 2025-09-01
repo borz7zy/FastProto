@@ -5,10 +5,10 @@
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/platform.hxx>
+#include <fast_proto/utils/thread_pool.hxx>
 #include <functional>
 #include <string>
 #include <thread>
-#include "thread_pool.hxx"
 
 namespace FastProto::net {
 

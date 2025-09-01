@@ -24,10 +24,6 @@ set(BORINGSSL_SKIP_TESTS ON CACHE BOOL "" FORCE)
 set(BORINGSSL_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(boringssl)
 
-include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
-)
-
 add_library(${PROJECT_NAME} STATIC
   src/crypto/crypto.cxx
   src/crypto/diffie_hellman.cxx
