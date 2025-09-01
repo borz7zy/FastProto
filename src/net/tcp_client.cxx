@@ -1,15 +1,16 @@
-﻿#include <fast_proto/net/common.hxx>
+﻿#include <fast_proto/logger.hxx>
+#include <fast_proto/net/common.hxx>
 #include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/platform.hxx>
-#include <fast_proto/logger.hxx>
-#include <utility>
-#include <system_error>
 #include <format>
+#include <system_error>
+#include <thread>
+#include <utility>
 
 namespace FastProto::net {
 
 TcpClient::TcpClient(const std::string& host, uint16_t port)
-    : host_(host), port_(port) {
+    : host_(host), port_(port), pool_{} {
 #ifdef _WIN32
   WSADATA wsaData;
   int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -65,7 +66,7 @@ bool TcpClient::connect() {
 
   sockfd_ = std::move(sock);
   running_ = true;
-  listen_thread_ = std::thread(&TcpClient::listen_loop, this);
+  pool_.submit([this]() { listen_loop(); });
 
   Logger::print_debug(
       "FastProto",
@@ -77,10 +78,6 @@ void TcpClient::disconnect() {
   running_ = false;
 
   sockfd_.reset();
-
-  if (listen_thread_.joinable()) {
-    listen_thread_.join();
-  }
 
 #ifdef _WIN32
   WSACleanup();
@@ -135,9 +132,12 @@ void TcpClient::listen_loop() {
       break;
     }
 
-    if (handler_) {
-      FastProto::Packet resp;
-      handler_(pkt, resp);
+if (handler_) {
+      FastProto::Packet pkt_copy = pkt;
+      pool_.submit([this, pkt_copy]() {
+        FastProto::Packet resp;
+        handler_(pkt_copy, resp);
+      });
     }
   }
 

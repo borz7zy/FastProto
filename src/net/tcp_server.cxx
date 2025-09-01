@@ -8,18 +8,20 @@
 #include <fast_proto/platform.hxx>
 #include <format>
 #include <sstream>
+#include <stop_token>
 #include <system_error>
 #include <thread>
 
 namespace FastProto::net {
 
-TcpServer::TcpServer(uint16_t port) : port_(port), server_fd_() {
+TcpServer::TcpServer(uint16_t port) : port_(port), server_fd_(), pool_{} {
 #ifdef _WIN32
   WSADATA wsa_data;
   const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
   if (wsa_err != 0) {
     Logger::print_error("FastProto", std::format("WSAStartup failed: {}", wsa_err).c_str());
     running_.store(false, std::memory_order_release);
+
     return;
   }
 #endif
@@ -167,8 +169,10 @@ void TcpServer::run() {
       std::lock_guard<std::mutex> lk(clients_mtx_);
       int raw_fd = client.get();
       client_fds_.push_back(std::move(client));
-      std::thread t(&TcpServer::handle_client, this, raw_fd, client_id);
-      t.detach();
+
+      pool_.submit([this, raw_fd, client_id]() {
+        TcpServer::handle_client(raw_fd, client_id);
+      });
     }
 
     Logger::print_debug("FastProto", std::format("[Server] Client connected: id={}", client_id).c_str());

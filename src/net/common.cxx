@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
 #include <stdexcept>
@@ -73,16 +74,71 @@ bool deserialize_packet(const std::vector<uint8_t>& data, FastProto::Packet& pkt
   return p == end;
 }
 
+#ifdef _WIN32
+static bool set_nonblock(SOCKET s, bool on) {
+  u_long m = on ? 1u : 0u;
+  return ioctlsocket(s, FIONBIO, &m) == 0;
+}
+
+int poll_writable(SOCKET s, int timeout_ms) {
+  WSAPOLLFD p{s, POLLWRNORM, 0};
+  return WSAPoll(&p, 1, timeout_ms);
+}
+#else
+static bool set_nonblock(int fd) {
+  int fl = fcntl(fd, F_GETFL, 0);
+  if (fl < 0)
+    return false;
+  return fcntl(fd, F_SETFL, fl | O_NONBLOCK) == 0;
+}
+
+int poll_writable(auto s, int timeout_ms) {
+  pollfd p{s, POLLOUT, 0};
+  return ::poll(&p, 1, timeout_ms);
+}
+#endif
+
 ssize_t send_all(int sockfd, const uint8_t* data, size_t len) {
   size_t off = 0;
   while (off < len) {
 #ifdef _WIN32
-    const ssize_t n = ::send(sockfd, reinterpret_cast<const char*>(data + off), static_cast<int>(len - off), 0);
+    const auto n = ::send(sockfd, reinterpret_cast<const char*>(data + off), static_cast<int>(len - off), 0);
+    if (n > 0) {
+      off += size_t(n);
+      continue;
+    }
+    if (n == SOCKET_ERROR) {
+      auto e = errno;
+      if (n == WSAEINTR)
+        continue;
+
+      if (e == EWOULDBLOCK || e == EAGAIN) {
+        if (poll_writable(sockfd, 1000) <= 0)
+          continue;
+        else
+          continue;
+      }
+    }
 #else
-    const ssize_t n = ::send(sockfd, data + off, len - off, 0);
+    const auto n = ::send(sockfd, data + off, len - off, 0);
+    if (n > 0) {
+      off += size_t(n);
+      continue;
+    }
+    if (n < 0) {
+      auto e = errno;
+      if (e == EINTR)
+        continue;
+
+      if (e == EWOULDBLOCK || e == EAGAIN) {
+        if (poll_writable(sockfd, 1000) <= 0)
+          continue;
+        else
+          continue;
+      }
+    }
 #endif
     if (n <= 0) return n;
-    off += static_cast<size_t>(n);
   }
   return static_cast<ssize_t>(off);
 }

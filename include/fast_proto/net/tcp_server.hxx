@@ -1,13 +1,17 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/platform.hxx>
 #include <fast_proto/uint_128.hxx>
 #include <functional>
 #include <mutex>
+#include <stop_token>
 #include <thread>
+#include "thread_pool.hxx"
+#include <unordered_map>
 #include <vector>
 
 namespace FastProto::net {
@@ -31,8 +35,10 @@ private:
   std::mutex clients_mtx_;
   std::unordered_map<uint32_t, common::PacketHandlerFn> handlers_;
   std::vector<SocketHandle> client_fds_;
-  std::atomic<unsigned long long int> next_client_id_{0ULL};
+  std::atomic<std::uint64_t> next_client_id_{0ULL};
   SocketHandle server_fd_;
+
+  ThreadPool pool_;
 };
 
 }

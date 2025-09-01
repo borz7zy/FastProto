@@ -1,4 +1,5 @@
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/fast_proto.hxx>
@@ -33,8 +34,8 @@ SymKey demo_key() {
 }
 
 int main(int argc, char** argv) {
-  uint16_t port = 9000;
-  if (argc >= 2) port = static_cast<uint16_t>(std::stoi(argv[1]));
+  std::uint16_t port = 9000;
+  if (argc >= 2) port = static_cast<std::uint16_t>(std::stoi(argv[1]));
 
   TcpServer server(port);
 
@@ -45,12 +46,12 @@ int main(int argc, char** argv) {
   });
 
   server.register_handler(Op::SUM_I64, [](const Packet& req, Packet& resp) {
-    long long sum = 0;
+    std::int64_t sum = 0;
     for (const auto& a : req.args) {
       if (a.type_id == Type::Int64) {
         sum += a.as_int64();
       } else {
-        sum += static_cast<long long>(a.as_int32());
+        sum += static_cast<std::int64_t>(a.as_int32());
       }
     }
     resp.opcode = req.opcode;

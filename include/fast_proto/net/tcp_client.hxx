@@ -8,6 +8,7 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include "thread_pool.hxx"
 
 namespace FastProto::net {
 
@@ -34,6 +35,8 @@ private:
   std::thread listen_thread_;
 
   common::PacketHandlerFn handler_;
+
+  ThreadPool pool_;
 };
 
 }
