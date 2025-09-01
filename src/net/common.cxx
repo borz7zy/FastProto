@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/platform.hxx>
+#include <fcntl.h>
 #include <stdexcept>
 #include <sys/types.h>
 #include <vector>
