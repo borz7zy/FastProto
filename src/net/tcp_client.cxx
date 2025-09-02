@@ -133,10 +133,10 @@ void TcpClient::listen_loop() {
     }
 
 if (handler_) {
-      FastProto::Packet pkt_copy = pkt;
-      pool_.submit([this, pkt_copy]() {
-        FastProto::Packet resp;
-        handler_(pkt_copy, resp);
+      // const FastProto::Packet pkt_copy = pkt;
+      pool_.submit([this, pkt]() {
+        FastProto::Packet resp; // dummy
+        handler_(pkt, resp);
       });
     }
   }
