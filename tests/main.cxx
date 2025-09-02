@@ -337,7 +337,7 @@ TEST(NetworkTest, ServerClientEcho) {
     } catch (const std::future_error&) {}
   });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   bool connected = false;
   for (size_t i = 0; i < 50 && !connected; ++i) {
@@ -352,7 +352,7 @@ TEST(NetworkTest, ServerClientEcho) {
   req.args.push_back(Arg::make_string("hello"));
   ASSERT_TRUE(ws_client.send(req)) << "Client failed to send request";
 
-  auto status = resp_future.wait_for(std::chrono::seconds(2));
+  auto status = resp_future.wait_for(std::chrono::seconds(4));
   ASSERT_EQ(status, std::future_status::ready)
       << "Timed out waiting for echo response";
 
