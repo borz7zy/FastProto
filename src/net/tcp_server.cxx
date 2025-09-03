@@ -25,8 +25,6 @@ struct TcpServer::Impl {
     std::array<std::uint8_t, 4> len_buf{};
     std::vector<std::uint8_t> in_buf;
 
-    // Очередь исходящих буферов; каждый элемент — общий буфер [len(4) +
-    // payload]
     std::deque<std::shared_ptr<std::vector<uint8_t>>> out_q;
     bool writing = false;
 
@@ -74,17 +72,15 @@ struct TcpServer::Impl {
               return;
             }
 
-            // Проставим source_fd нативным хэндлом (для обратной совместимости)
             req.source_fd =
                 static_cast<std::intptr_t>(self->socket.native_handle());
 
-            FastProto::Packet resp; // ответ заполним обработчиком
+            FastProto::Packet resp;
             if (const auto it = self->owner.handlers_.find(req.opcode);
                 it != self->owner.handlers_.end()) {
               it->second(req, resp);
             }
 
-            // Сериализуем ответ и отправим
             auto payload = common::serialize_packet(resp);
             const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
 
@@ -96,7 +92,6 @@ struct TcpServer::Impl {
 
             self->enqueue_write(out);
 
-            // Читаем следующий запрос
             self->do_read_len();
           });
     }
@@ -143,7 +138,6 @@ struct TcpServer::Impl {
     acceptor.async_accept(
         session->socket, [this, session](boost::system::error_code ec) {
           if (!ec && self->running_.load(std::memory_order_acquire)) {
-            // Сохраним сессию
             sessions.push_back(session);
             Logger::print_debug("FastProto", "[Server] Client connected");
             session->start();
@@ -156,7 +150,6 @@ struct TcpServer::Impl {
   }
 
   void broadcast_shared(const std::shared_ptr<std::vector<uint8_t>>& buf) {
-    // Чистим умершие и шлём живым
     sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
                                   [](const std::weak_ptr<Session>& w) {
                                     return w.expired();
@@ -200,7 +193,6 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
 }
 
 void TcpServer::broadcast(const FastProto::Packet& packet) {
-  // Готовим общий буфер (ОБЩИЙ для всех клиентов) — безопасно, он иммутабелен
   const auto payload = common::serialize_packet(packet);
   const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
 
@@ -210,7 +202,6 @@ void TcpServer::broadcast(const FastProto::Packet& packet) {
               reinterpret_cast<const uint8_t*>(&nlen) + 4);
   buf->insert(buf->end(), payload.begin(), payload.end());
 
-  // Если broadcast из другого потока — перенесём в контекст ioc
   boost::asio::post(
       impl_->ioc, [impl = impl_.get(), buf]() { impl->broadcast_shared(buf); });
 }
@@ -235,8 +226,6 @@ void TcpServer::stop() {
     return;
 
   boost::asio::post(impl_->ioc, [impl = impl_.get()]() { impl->stop_all(); });
-  // Если stop() вызван из того же потока, где run(), post выполнится во время
-  // run(). Если из другого — разбудим ioc:
   impl_->ioc.poll();
 }
 

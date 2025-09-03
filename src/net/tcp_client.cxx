@@ -105,7 +105,6 @@ struct TcpClient::Impl {
     running.store(false, std::memory_order_release);
   }
 
-  // поля
   TcpClient* self;
   std::atomic<bool> running{false};
 
@@ -133,16 +132,13 @@ bool TcpClient::connect() {
 
   Impl* impl = impl_.get();
 
-  // Запускаем io_context в одном потоке
   impl->ioc.restart();
   impl->io_thread =
       std::make_unique<std::thread>([impl]() { impl->ioc.run(); });
 
-  // Будем сообщать о результате через shared_ptr<promise>
   auto ready = std::make_shared<std::promise<bool>>();
   auto fut = ready->get_future();
 
-  // Резолвим и коннектимся асинхронно
   boost::asio::post(impl->ioc.get_executor(), [impl, prm = std::move(ready),
                                                this]() mutable {
     try {
