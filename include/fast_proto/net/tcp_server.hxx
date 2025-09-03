@@ -4,13 +4,9 @@
 #include <cstdint>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/socket_handle.hxx>
-#include <fast_proto/platform.hxx>
-#include <fast_proto/uint_128.hxx>
 #include <fast_proto/utils/thread_pool.hxx>
 #include <functional>
 #include <mutex>
-#include <stop_token>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -28,7 +24,7 @@ public:
   void stop();
 
 private:
-  void handle_client(int client_fd, int client_id);
+  void handle_client(int client_fd, std::uint64_t client_id);
 
   uint16_t port_;
   std::atomic<bool> running_{false};

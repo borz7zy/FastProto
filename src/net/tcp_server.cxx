@@ -14,7 +14,7 @@
 
 namespace FastProto::net {
 
-TcpServer::TcpServer(uint16_t port) : port_(port), server_fd_(), pool_{} {
+TcpServer::TcpServer(const uint16_t port) : port_(port), server_fd_(), pool_{} {
 #ifdef _WIN32
   WSADATA wsa_data;
   const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
@@ -36,20 +36,19 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
 }
 
 void TcpServer::broadcast(const FastProto::Packet& packet) {
-  auto out_buf = common::serialize_packet(packet);
-  uint32_t out_nlen = htonl(static_cast<uint32_t>(out_buf.size()));
+  const auto out_buf = common::serialize_packet(packet);
+  const std::uint32_t out_nlen = htonl(static_cast<uint32_t>(out_buf.size()));
 
   std::vector<SocketHandle> clients_copy;
   {
     std::lock_guard<std::mutex> lk(clients_mtx_);
     clients_copy.resize(client_fds_.size());
-    //clients_copy = client_fds_;
     memcpy(clients_copy.data(), client_fds_.data(),
            sizeof(SocketHandle) * client_fds_.size());
   }
 
   for (auto& client : clients_copy) {
-    int fd = client.get();
+    const int fd = client.get();
     if (fd < 0)
       continue;
 
@@ -69,7 +68,6 @@ void TcpServer::run() {
   SocketHandle srv(::socket(AF_INET, SOCK_STREAM, 0));
   if (!srv.valid()) {
     const int err = WSAGetLastError();
-    //std::cerr << "[Server] socket error: " << err << "\n";
     Logger::print_error("FastProto", std::format("[Server] socket error: {}", err).c_str());
     running_.store(false, std::memory_order_release);
     return;
@@ -162,12 +160,12 @@ void TcpServer::run() {
       continue;
     }
 
-    const unsigned long long int client_id =
+    const std::uint64_t client_id =
         next_client_id_.fetch_add(1ULL, std::memory_order_relaxed);
 
     {
       std::lock_guard<std::mutex> lk(clients_mtx_);
-      int raw_fd = client.get();
+      const int raw_fd = client.get();
       client_fds_.push_back(std::move(client));
 
       pool_.submit([this, raw_fd, client_id]() {
@@ -186,8 +184,8 @@ void TcpServer::stop() {
 
   server_fd_.reset();
 
-  std::vector<SocketHandle> clients;
   {
+    std::vector<SocketHandle> clients;
     std::lock_guard lk(clients_mtx_);
     clients.swap(client_fds_);
   }
@@ -199,7 +197,7 @@ void TcpServer::stop() {
   Logger::print_debug("FastProto", "[Server] Stopped");
 }
 
-void TcpServer::handle_client(int client_fd, int client_id) {
+void TcpServer::handle_client(int client_fd, std::uint64_t client_id) {
   constexpr uint32_t kMaxFrameLen = 32u * 1024u * 1024u;
 
   while (running_) {
@@ -233,8 +231,7 @@ void TcpServer::handle_client(int client_fd, int client_id) {
     req.source_fd = client_fd;
 
     FastProto::Packet resp;
-    auto it = handlers_.find(req.opcode);
-    if (it != handlers_.end()) {
+    if (const auto it = handlers_.find(req.opcode); it != handlers_.end()) {
       it->second(req, resp);
     }
 
@@ -251,8 +248,8 @@ void TcpServer::handle_client(int client_fd, int client_id) {
 
   {
     std::lock_guard<std::mutex> lk(clients_mtx_);
-    auto it = std::find_if(
-        client_fds_.begin(), client_fds_.end(),
+    const auto it = std::ranges::find_if(
+        client_fds_,
         [client_fd](const SocketHandle& h) { return h.get() == client_fd; });
     if (it != client_fds_.end()) {
       client_fds_.erase(it);

@@ -134,7 +134,7 @@ void TcpClient::listen_loop() {
 
 if (handler_) {
       // const FastProto::Packet pkt_copy = pkt;
-      pool_.submit([this, pkt]() {
+      pool_.submit([this, pkt]() mutable {
         FastProto::Packet resp; // dummy
         handler_(pkt, resp);
       });
