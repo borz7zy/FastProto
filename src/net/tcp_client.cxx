@@ -197,7 +197,14 @@ void TcpClient::disconnect() {
   if (!running_.exchange(false, std::memory_order_acq_rel))
     return;
 
-  boost::asio::post(impl->ioc.get_executor(), [impl]() { impl->close(); });
+  std::promise<void> closed;
+  auto fut = closed.get_future();
+  boost::asio::post(
+      impl->ioc.get_executor(), [impl, p = std::move(closed)]() mutable {
+        impl->close();
+        p.set_value();
+      });
+  (void)fut.wait_for(std::chrono::milliseconds(200));
   impl->ioc.stop();
 
   if (impl->io_thread && impl->io_thread->joinable()) {

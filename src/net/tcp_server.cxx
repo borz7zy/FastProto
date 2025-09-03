@@ -1,10 +1,11 @@
 #include <algorithm>
 #include <atomic>
 #include <boost/asio.hpp>
+#include <boost/asio/post.hpp>
 #include <cstring>
 #include <deque>
 #include <fast_proto/logger.hxx>
-#include <fast_proto/net/common.hxx>
+#include <fast_proto/net/common.hxx>    
 #include <fast_proto/net/tcp_server.hxx>
 #include <format>
 #include <memory>
@@ -42,8 +43,8 @@ struct TcpServer::Impl {
               self->close();
               return;
             }
-            const uint32_t nlen =
-                *reinterpret_cast<const uint32_t*>(self->len_buf.data());
+            uint32_t nlen = 0;
+            std::memcpy(&nlen, self->len_buf.data(), 4);
             const uint32_t len = ntohl(nlen);
             if (len == 0 || len > kMaxFrameLen) {
               self->close();
@@ -130,8 +131,16 @@ struct TcpServer::Impl {
     }
   };
 
+  using WorkGuard = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
   explicit Impl(TcpServer* outer, uint16_t port)
-      : ioc(1), acceptor(ioc, tcp::endpoint(tcp::v4(), port)), self(outer) {}
+      : ioc(1), acceptor(ioc), self(outer), work(boost::asio::make_work_guard(ioc)) {
+    boost::system::error_code ec;
+    tcp::endpoint ep(tcp::v4(), port);
+    acceptor.open(ep.protocol(), ec);
+    acceptor.set_option(tcp::acceptor::reuse_address(true), ec);
+    acceptor.bind(ep, ec);
+    acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
+  }
 
   void start_accept() {
     auto session = std::make_shared<Session>(ioc, *self);
@@ -172,6 +181,7 @@ struct TcpServer::Impl {
         s->close();
     }
     sessions.clear();
+    work.reset();
     ioc.stop();
   }
 
@@ -179,6 +189,7 @@ struct TcpServer::Impl {
   tcp::acceptor acceptor;
   std::vector<std::weak_ptr<Session>> sessions;
   TcpServer* self;
+  WorkGuard work;
 };
 
 TcpServer::TcpServer(const uint16_t port)
