@@ -1,31 +1,195 @@
 #include <algorithm>
-#include <cerrno>
+#include <atomic>
+#include <boost/asio.hpp>
 #include <cstring>
+#include <deque>
 #include <fast_proto/logger.hxx>
 #include <fast_proto/net/common.hxx>
-#include <fast_proto/net/socket_handle.hxx>
 #include <fast_proto/net/tcp_server.hxx>
-#include <fast_proto/platform.hxx>
 #include <format>
-#include <sstream>
-#include <stop_token>
+#include <memory>
+#include <mutex>
 #include <system_error>
-#include <thread>
+#include <vector>
 
 namespace FastProto::net {
 
-TcpServer::TcpServer(const uint16_t port) : port_(port), server_fd_(), pool_{} {
-#ifdef _WIN32
-  WSADATA wsa_data;
-  const int wsa_err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-  if (wsa_err != 0) {
-    Logger::print_error("FastProto", std::format("WSAStartup failed: {}", wsa_err).c_str());
-    running_.store(false, std::memory_order_release);
+using boost::asio::ip::tcp;
 
-    return;
+static constexpr uint32_t kMaxFrameLen = 32u * 1024u * 1024u;
+
+struct TcpServer::Impl {
+  struct Session : public std::enable_shared_from_this<Session> {
+    tcp::socket socket;
+    TcpServer& owner;
+    std::array<std::uint8_t, 4> len_buf{};
+    std::vector<std::uint8_t> in_buf;
+
+    // Очередь исходящих буферов; каждый элемент — общий буфер [len(4) +
+    // payload]
+    std::deque<std::shared_ptr<std::vector<uint8_t>>> out_q;
+    bool writing = false;
+
+    explicit Session(boost::asio::io_context& ioc, TcpServer& owner_)
+        : socket(ioc), owner(owner_) {}
+
+    void start() { do_read_len(); }
+
+    void do_read_len() {
+      auto self = shared_from_this();
+      boost::asio::async_read(
+          socket, boost::asio::buffer(len_buf),
+          [self](boost::system::error_code ec, std::size_t n) {
+            if (ec || n != 4) {
+              self->close();
+              return;
+            }
+            const uint32_t nlen =
+                *reinterpret_cast<const uint32_t*>(self->len_buf.data());
+            const uint32_t len = ntohl(nlen);
+            if (len == 0 || len > kMaxFrameLen) {
+              self->close();
+              return;
+            }
+            self->in_buf.resize(len);
+            self->do_read_body();
+          });
+    }
+
+    void do_read_body() {
+      auto self = shared_from_this();
+      boost::asio::async_read(
+          socket, boost::asio::buffer(in_buf),
+          [self](boost::system::error_code ec, std::size_t n) {
+            if (ec || n != self->in_buf.size()) {
+              self->close();
+              return;
+            }
+
+            FastProto::Packet req;
+            if (!common::deserialize_packet(self->in_buf, req)) {
+              Logger::print_error("FastProto",
+                                  "[Server] Failed to deserialize packet");
+              self->close();
+              return;
+            }
+
+            // Проставим source_fd нативным хэндлом (для обратной совместимости)
+            req.source_fd =
+                static_cast<std::intptr_t>(self->socket.native_handle());
+
+            FastProto::Packet resp; // ответ заполним обработчиком
+            if (const auto it = self->owner.handlers_.find(req.opcode);
+                it != self->owner.handlers_.end()) {
+              it->second(req, resp);
+            }
+
+            // Сериализуем ответ и отправим
+            auto payload = common::serialize_packet(resp);
+            const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
+
+            auto out = std::make_shared<std::vector<uint8_t>>();
+            out->reserve(4 + payload.size());
+            out->insert(out->end(), reinterpret_cast<const uint8_t*>(&nlen),
+                        reinterpret_cast<const uint8_t*>(&nlen) + 4);
+            out->insert(out->end(), payload.begin(), payload.end());
+
+            self->enqueue_write(out);
+
+            // Читаем следующий запрос
+            self->do_read_len();
+          });
+    }
+
+    void enqueue_write(const std::shared_ptr<std::vector<uint8_t>>& buf) {
+      out_q.push_back(buf);
+      if (!writing) {
+        writing = true;
+        do_write();
+      }
+    }
+
+    void do_write() {
+      if (out_q.empty()) {
+        writing = false;
+        return;
+      }
+      auto self = shared_from_this();
+      auto& buf = *out_q.front();
+      boost::asio::async_write(
+          socket, boost::asio::buffer(buf),
+          [self](boost::system::error_code ec, std::size_t) {
+            if (ec) {
+              self->close();
+              return;
+            }
+            self->out_q.pop_front();
+            self->do_write();
+          });
+    }
+
+    void close() {
+      boost::system::error_code ignored;
+      socket.shutdown(tcp::socket::shutdown_both, ignored);
+      socket.close(ignored);
+    }
+  };
+
+  explicit Impl(TcpServer* outer, uint16_t port)
+      : ioc(1), acceptor(ioc, tcp::endpoint(tcp::v4(), port)), self(outer) {}
+
+  void start_accept() {
+    auto session = std::make_shared<Session>(ioc, *self);
+    acceptor.async_accept(
+        session->socket, [this, session](boost::system::error_code ec) {
+          if (!ec && self->running_.load(std::memory_order_acquire)) {
+            // Сохраним сессию
+            sessions.push_back(session);
+            Logger::print_debug("FastProto", "[Server] Client connected");
+            session->start();
+          }
+
+          if (self->running_.load(std::memory_order_acquire)) {
+            start_accept();
+          }
+        });
   }
-#endif
-}
+
+  void broadcast_shared(const std::shared_ptr<std::vector<uint8_t>>& buf) {
+    // Чистим умершие и шлём живым
+    sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
+                                  [](const std::weak_ptr<Session>& w) {
+                                    return w.expired();
+                                  }),
+                   sessions.end());
+
+    for (auto& w : sessions) {
+      if (auto s = w.lock()) {
+        s->enqueue_write(buf);
+      }
+    }
+  }
+
+  void stop_all() {
+    boost::system::error_code ec;
+    acceptor.cancel(ec);
+    acceptor.close(ec);
+    for (auto& w : sessions) {
+      if (auto s = w.lock())
+        s->close();
+    }
+    sessions.clear();
+    ioc.stop();
+  }
+
+  boost::asio::io_context ioc;
+  tcp::acceptor acceptor;
+  std::vector<std::weak_ptr<Session>> sessions;
+  TcpServer* self;
+};
+
+TcpServer::TcpServer(const uint16_t port)
+    : impl_(std::make_unique<Impl>(this, port)), port_(port) {}
 
 TcpServer::~TcpServer() {
   stop();
@@ -36,227 +200,44 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
 }
 
 void TcpServer::broadcast(const FastProto::Packet& packet) {
-  const auto out_buf = common::serialize_packet(packet);
-  const std::uint32_t out_nlen = htonl(static_cast<uint32_t>(out_buf.size()));
+  // Готовим общий буфер (ОБЩИЙ для всех клиентов) — безопасно, он иммутабелен
+  const auto payload = common::serialize_packet(packet);
+  const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
 
-  std::vector<SocketHandle> clients_copy;
-  {
-    std::lock_guard<std::mutex> lk(clients_mtx_);
-    clients_copy.resize(client_fds_.size());
-    memcpy(clients_copy.data(), client_fds_.data(),
-           sizeof(SocketHandle) * client_fds_.size());
-  }
+  auto buf = std::make_shared<std::vector<uint8_t>>();
+  buf->reserve(4 + payload.size());
+  buf->insert(buf->end(), reinterpret_cast<const uint8_t*>(&nlen),
+              reinterpret_cast<const uint8_t*>(&nlen) + 4);
+  buf->insert(buf->end(), payload.begin(), payload.end());
 
-  for (auto& client : clients_copy) {
-    const int fd = client.get();
-    if (fd < 0)
-      continue;
-
-    if (common::send_all(fd, reinterpret_cast<const uint8_t*>(&out_nlen), sizeof(out_nlen)) <= 0)
-      continue;
-    
-    if (common::send_all(fd, out_buf.data(), out_buf.size()) <= 0)
-      continue;
-
-  }
+  // Если broadcast из другого потока — перенесём в контекст ioc
+  boost::asio::post(
+      impl_->ioc, [impl = impl_.get(), buf]() { impl->broadcast_shared(buf); });
 }
 
 void TcpServer::run() {
-  running_.store(true, std::memory_order_release);
-
-#ifdef _WIN32
-  SocketHandle srv(::socket(AF_INET, SOCK_STREAM, 0));
-  if (!srv.valid()) {
-    const int err = WSAGetLastError();
-    Logger::print_error("FastProto", std::format("[Server] socket error: {}", err).c_str());
-    running_.store(false, std::memory_order_release);
+  if (running_.exchange(true, std::memory_order_acq_rel))
     return;
-  }
-#else
-  SocketHandle srv(::socket(AF_INET, SOCK_STREAM, 0));
-  if (!srv.valid()) {
-    //std::perror("[Server] socket");
-    std::error_code ec(errno, std::system_category());
-    Logger::print_error("FastProto", std::format("[Server] socket error: ", ec.message()).c_str());
-    running_.store(false, std::memory_order_release);
-    return;
-  }
-#endif
 
-  constexpr int opt = 1;
-#ifdef _WIN32
-  ::setsockopt(srv.get(), SOL_SOCKET, SO_REUSEADDR,
-               reinterpret_cast<const char*>(&opt), sizeof(opt));
-#else
-  ::setsockopt(srv.get(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-#endif
+  Logger::print_debug(
+      "FastProto", std::format("[Server] Listening on port {}", port_).c_str());
 
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(port_);
+  impl_->start_accept();
+  impl_->ioc.restart();
+  impl_->ioc.run();
 
-  if (::bind(srv.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    std::perror("[Server] bind");
-    srv.reset();
-    running_.store(false, std::memory_order_release);
-    return;
-  }
-
-  if (::listen(srv.get(), 128) < 0) {
-    std::perror("[Server] listen");
-    srv.reset();
-    running_.store(false, std::memory_order_release);
-    return;
-  }
-
-  server_fd_ = std::move(srv);
-  Logger::print_debug("FastProto", std::format("[Server] Listening on port {}", port_).c_str());
-
-  while (running_.load(std::memory_order_acquire)) {
-    sockaddr_in cli_addr{};
-#ifdef _WIN32
-    int cli_len = sizeof(cli_addr);
-#else
-    socklen_t cli_len = sizeof(cli_addr);
-#endif
-
-    SocketHandle client(::accept(
-        server_fd_.get(), reinterpret_cast<sockaddr*>(&cli_addr), &cli_len));
-    if (!client.valid()) {
-#ifdef _WIN32
-      int e = WSAGetLastError();
-#else
-      int e = errno;
-#endif
-      if (!running_.load(std::memory_order_acquire))
-        break;
-
-#ifdef _WIN32
-      if (e == WSAEINTR || e == WSAEWOULDBLOCK) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        continue;
-      }
-#else
-      if (e == EINTR)
-        continue;
-      if (e == EBADF)
-        break;
-      if (e == EAGAIN || e == EWOULDBLOCK) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        continue;
-      }
-      if (e == EMFILE || e == ENFILE) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        continue;
-      }
-#endif
-      Logger::print_error("FastProto",
-                          std::format("[Server] accept error: {} ({})",
-                                      std::generic_category().message(e), e)
-                              .c_str());
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      continue;
-    }
-
-    const std::uint64_t client_id =
-        next_client_id_.fetch_add(1ULL, std::memory_order_relaxed);
-
-    {
-      std::lock_guard<std::mutex> lk(clients_mtx_);
-      const int raw_fd = client.get();
-      client_fds_.push_back(std::move(client));
-
-      pool_.submit([this, raw_fd, client_id]() {
-        TcpServer::handle_client(raw_fd, client_id);
-      });
-    }
-
-    Logger::print_debug("FastProto", std::format("[Server] Client connected: id={}", client_id).c_str());
-  }
-
-  server_fd_.reset();
-}
-
-void TcpServer::stop() {
   running_.store(false, std::memory_order_release);
-
-  server_fd_.reset();
-
-  {
-    std::vector<SocketHandle> clients;
-    std::lock_guard lk(clients_mtx_);
-    clients.swap(client_fds_);
-  }
-
-#ifdef _WIN32
-  WSACleanup();
-#endif
-
   Logger::print_debug("FastProto", "[Server] Stopped");
 }
 
-void TcpServer::handle_client(int client_fd, std::uint64_t client_id) {
-  constexpr uint32_t kMaxFrameLen = 32u * 1024u * 1024u;
+void TcpServer::stop() {
+  if (!running_.exchange(false, std::memory_order_acq_rel))
+    return;
 
-  while (running_) {
-    uint32_t nlen = 0;
-    ssize_t r = common::recv_all(client_fd, reinterpret_cast<uint8_t*>(&nlen),
-                                 sizeof(nlen));
-    if (r <= 0)
-      break;
-
-    const uint32_t len = ntohl(nlen);
-    if (len == 0 || len > kMaxFrameLen)
-      break;
-
-    std::vector<uint8_t> buf(len);
-    r = common::recv_all(client_fd, buf.data(), len);
-    if (r <= 0)
-      break;
-
-    FastProto::Packet req;
-    if (!common::deserialize_packet(buf, req)) {
-      std::ostringstream os;
-      os << "[Server] Failed to deserialize packet"
-         << " len=" << buf.size() << " magic=" << std::hex
-         << static_cast<int>(buf[0]) << " " << static_cast<int>(buf[1])
-         << " " << static_cast<int>(buf[2]) << " "
-         << static_cast<int>(buf[3]) << std::dec;
-      Logger::print_error("FastProto", os.str().c_str());
-      break;
-    }
-
-    req.source_fd = client_fd;
-
-    FastProto::Packet resp;
-    if (const auto it = handlers_.find(req.opcode); it != handlers_.end()) {
-      it->second(req, resp);
-    }
-
-    auto out_buf = common::serialize_packet(resp);
-    const auto out_len = static_cast<uint32_t>(out_buf.size());
-    uint32_t out_nlen = htonl(out_len);
-
-    if (common::send_all(client_fd, reinterpret_cast<const uint8_t*>(&out_nlen),
-                         sizeof(out_nlen)) <= 0)
-      break;
-    if (common::send_all(client_fd, out_buf.data(), out_buf.size()) <= 0)
-      break;
-  }
-
-  {
-    std::lock_guard<std::mutex> lk(clients_mtx_);
-    const auto it = std::ranges::find_if(
-        client_fds_,
-        [client_fd](const SocketHandle& h) { return h.get() == client_fd; });
-    if (it != client_fds_.end()) {
-      client_fds_.erase(it);
-    }
-  }
-
-  Logger::print_debug("FastProto", std::format("[Server] Client disconnected: id={}", client_id).c_str());
+  boost::asio::post(impl_->ioc, [impl = impl_.get()]() { impl->stop_all(); });
+  // Если stop() вызван из того же потока, где run(), post выполнится во время
+  // run(). Если из другого — разбудим ioc:
+  impl_->ioc.poll();
 }
 
 }
