@@ -3,6 +3,7 @@
 #include <fast_proto/fast_proto.hxx>
 #include <fast_proto/net/tcp_client.hxx>
 #include <iostream>
+#include <thread>
 
 using namespace FastProto;
 using namespace FastProto::net;
