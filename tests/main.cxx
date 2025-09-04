@@ -294,7 +294,8 @@ TEST(CryptoTest, DiffieHellman_AesGcm_EndToEnd) {
   // Create a symmetric key AES-256-GCM
   SymKey sym{};
   std::memcpy(sym.bytes, aliceSecret.data(),
-              min(sizeof(sym.bytes), aliceSecret.size()));
+      (((sizeof(sym.bytes)) < (aliceSecret.size())) ? (sizeof(sym.bytes))
+                                                    : (aliceSecret.size())));
 
   // Alice encrypts the message
   const std::string message = "Hello, Bob!";
