@@ -152,6 +152,11 @@ struct TcpServer::Impl {
           if (!ec && self->running_.load(std::memory_order_acquire)) {
             sessions.push_back(session);
             Logger::print_debug("FastProto", "[Server] Client connected");
+
+            auto fd =
+                static_cast<std::intptr_t>(session->socket.native_handle());
+            self->notify_connect(fd);
+
             session->start();
           }
 
@@ -222,6 +227,10 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
   handlers_[opcode] = std::move(fn);
 }
 
+void TcpServer::set_connect_handler(ConnectClientFn fn) {
+  on_connect_ = std::move(fn);
+}
+
 void TcpServer::set_disconnect_handler(DisconnectClientFn fn) {
   on_disconnect_ = std::move(fn);
 }
@@ -280,10 +289,14 @@ void TcpServer::stop() {
   impl_->ioc.poll();
 }
 
+void TcpServer::notify_connect(std::intptr_t fd) {
+  if (on_connect_)
+    on_connect_(fd);
+}
+
 void TcpServer::notify_disconnect(std::intptr_t fd) {
-    if (on_disconnect_) {
+  if (on_disconnect_)
     on_disconnect_(fd);
-  }
 }
 
 }

@@ -14,11 +14,13 @@ namespace FastProto::net {
 class TcpServer {
 public:
   using DisconnectClientFn = std::function<void(std::intptr_t)>;
+  using ConnectClientFn = std::function<void(std::intptr_t)>;
 
   explicit TcpServer(std::uint16_t port);
   ~TcpServer();
 
   void set_disconnect_handler(DisconnectClientFn fn);
+  void set_connect_handler(ConnectClientFn fn);
 
   void register_handler(std::uint32_t opcode, common::PacketHandlerFn fn);
   void broadcast(const FastProto::Packet& packet);
@@ -37,6 +39,8 @@ public:
   std::atomic<bool> running_{false};
   std::unordered_map<std::uint32_t, common::PacketHandlerFn> handlers_;
 
+  void notify_connect(std::intptr_t fd);
+  ConnectClientFn on_connect_;
   void notify_disconnect(std::intptr_t fd);
   DisconnectClientFn on_disconnect_;
 };
