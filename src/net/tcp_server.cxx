@@ -9,9 +9,8 @@
 #include <fast_proto/net/tcp_server.hxx>
 #include <format>
 #include <memory>
-#include <mutex>
-#include <system_error>
 #include <vector>
+#include <unordered_set>
 
 namespace FastProto::net {
 
@@ -172,6 +171,22 @@ struct TcpServer::Impl {
     }
   }
 
+  void multicast_shared(const std::shared_ptr<std::vector<uint8_t>>& buf,
+                        const std::shared_ptr<std::unordered_set<std::intptr_t>>& targets) {
+    sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
+                                  [](const std::weak_ptr<Session>& w){ return w.expired(); }),
+                   sessions.end());
+
+    for (auto& w : sessions) {
+      if (auto s = w.lock()) {
+        auto fd = static_cast<std::intptr_t>(s->socket.native_handle());
+        if (targets->count(fd)) {
+          s->enqueue_write(buf);
+        }
+      }
+    }
+  }
+
   void stop_all() {
     boost::system::error_code ec;
     acceptor.cancel(ec);
@@ -215,6 +230,23 @@ void TcpServer::broadcast(const FastProto::Packet& packet) {
 
   boost::asio::post(
       impl_->ioc, [impl = impl_.get(), buf]() { impl->broadcast_shared(buf); });
+}
+
+void TcpServer::multicast(const FastProto::Packet& packet,
+                          const std::vector<std::intptr_t>& fds) {
+  const auto payload = common::serialize_packet(packet);
+  const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
+
+  auto buf = std::make_shared<std::vector<uint8_t>>();
+  buf->reserve(4 + payload.size());
+  buf->insert(buf->end(), reinterpret_cast<const uint8_t*>(&nlen),
+              reinterpret_cast<const uint8_t*>(&nlen) + 4);
+  buf->insert(buf->end(), payload.begin(), payload.end());
+
+  auto targets = std::make_shared<std::unordered_set<std::intptr_t>>(fds.begin(), fds.end());
+  boost::asio::post(impl_->ioc, [impl = impl_.get(), buf, targets]() {
+    impl->multicast_shared(buf, targets);
+  });
 }
 
 void TcpServer::run() {

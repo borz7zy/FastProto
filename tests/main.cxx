@@ -335,7 +335,7 @@ TEST(NetworkTest, ServerClientEcho) {
     } catch (const std::future_error&) {}
   });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   bool connected = false;
   for (size_t i = 0; i < 50 && !connected; ++i) {
@@ -358,6 +358,121 @@ TEST(NetworkTest, ServerClientEcho) {
   EXPECT_EQ(resp.opcode, req.opcode);
   ASSERT_EQ(resp.args.size(), 1u);
   EXPECT_EQ(resp.args[0].as_string(), "hello");
+}
+
+TEST(NetworkTest, ServerClientMulticast_Targeted) {
+  using namespace std::chrono_literals;
+
+  constexpr uint16_t port       = 9003;
+  constexpr uint32_t OP_HELLO   = 0xBEEF;
+  constexpr uint32_t OP_TRIGGER = 0xCAFE;
+  constexpr uint32_t OP_NOTIFY  = 0xC0DE;
+
+  net::TcpServer ws_server(port);
+  net::TcpClient ws_client("127.0.0.1", port);
+  net::TcpClient ws_client2("127.0.0.1", port);
+
+  std::mutex mu;
+  std::unordered_map<std::string, std::intptr_t> name2fd;
+
+  ws_server.register_handler(OP_HELLO, [&](const Packet& req, Packet& /* ignored */) {
+    if (!req.args.empty()) {
+      const auto name = req.args[0].as_string();
+      std::lock_guard<std::mutex> lk(mu);
+      name2fd[name] = static_cast<std::intptr_t>(req.source_fd);
+    }
+  });
+
+  ws_server.register_handler(OP_TRIGGER, [&](const Packet& req, Packet& /* ignored */) {
+    // args: [ target_name, payload ]
+    ASSERT_GE(req.args.size(), 2u);
+    const auto target = req.args[0].as_string();
+    const auto payload = req.args[1].as_string();
+
+    std::intptr_t target_fd = -1;
+    {
+      std::lock_guard<std::mutex> lk(mu);
+      auto it = name2fd.find(target);
+      if (it != name2fd.end()) target_fd = it->second;
+    }
+    if (target_fd != -1) {
+      Packet notify;
+      notify.opcode = OP_NOTIFY;
+      notify.args.push_back(Arg::make_string(payload));
+      ws_server.multicast(notify, { target_fd });
+    }
+  });
+
+  std::thread server_thread([&]() { ws_server.run(); });
+
+  Defer cleanup([&] {
+    ws_client.disconnect();
+    ws_client2.disconnect();
+    ws_server.stop();
+    if (server_thread.joinable())
+      server_thread.join();
+  });
+
+  std::promise<Packet> got_c2_notify_promise;
+  auto got_c2_notify = got_c2_notify_promise.get_future();
+
+  std::promise<Packet> got_c1_unexpected_notify_promise;
+  auto got_c1_unexpected_notify = got_c1_unexpected_notify_promise.get_future();
+
+  ws_client.set_message_handler([&](const Packet& pkt, Packet&) {
+    if (pkt.opcode == OP_NOTIFY) {
+      try { got_c1_unexpected_notify_promise.set_value(pkt); } catch (...) {}
+    }
+  });
+
+  ws_client2.set_message_handler([&](const Packet& pkt, Packet&) {
+    if (pkt.opcode == OP_NOTIFY) {
+      try { got_c2_notify_promise.set_value(pkt); } catch (...) {}
+    }
+  });
+
+  std::this_thread::sleep_for(50ms);
+
+  bool connected = false;
+  for (size_t i = 0; i < 50 && !connected; ++i) {
+    connected = ws_client.connect();
+    if (!connected) std::this_thread::sleep_for(20ms);
+  }
+  ASSERT_TRUE(connected) << "Client failed to connect to server";
+
+  bool connected2 = false;
+  for (size_t i = 0; i < 50 && !connected2; ++i) {
+    connected2 = ws_client2.connect();
+    if (!connected2) std::this_thread::sleep_for(20ms);
+  }
+  ASSERT_TRUE(connected2) << "Client2 failed to connect to server";
+
+  {
+    Packet hello1; hello1.opcode = OP_HELLO;
+    hello1.args.push_back(Arg::make_string("c1"));
+    ASSERT_TRUE(ws_client.send(hello1));
+
+    Packet hello2; hello2.opcode = OP_HELLO;
+    hello2.args.push_back(Arg::make_string("c2"));
+    ASSERT_TRUE(ws_client2.send(hello2));
+  }
+
+  {
+    Packet trigger; trigger.opcode = OP_TRIGGER;
+    trigger.args.push_back(Arg::make_string("c2"));
+    trigger.args.push_back(Arg::make_string("hello-mc"));
+    ASSERT_TRUE(ws_client.send(trigger));
+  }
+
+  auto status2 = got_c2_notify.wait_for(2s);
+  ASSERT_EQ(status2, std::future_status::ready) << "Timed out waiting for multicast at client2";
+  Packet resp2 = got_c2_notify.get();
+  EXPECT_EQ(resp2.opcode, OP_NOTIFY);
+  ASSERT_EQ(resp2.args.size(), 1u);
+  EXPECT_EQ(resp2.args[0].as_string(), "hello-mc");
+
+  auto status1 = got_c1_unexpected_notify.wait_for(200ms);
+  EXPECT_EQ(status1, std::future_status::timeout) << "Client1 must not receive multicast";
 }
 
 // ===== UInt128 =====

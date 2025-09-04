@@ -18,6 +18,9 @@ class TcpServer {
 
   void register_handler(std::uint32_t opcode, common::PacketHandlerFn fn);
   void broadcast(const FastProto::Packet& packet);
+  void multicast(const FastProto::Packet& packet,
+                 const std::vector<std::intptr_t>& fds);
+
 
   void run();
   void stop();
