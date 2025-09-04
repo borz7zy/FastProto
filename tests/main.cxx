@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/crypto/diffie_hellman.hxx>
