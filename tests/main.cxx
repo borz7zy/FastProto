@@ -3,10 +3,12 @@
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/crypto/diffie_hellman.hxx>
 #include <fast_proto/fast_proto.hxx>
+#include <fast_proto/logger.hxx>
 #include <fast_proto/net/common.hxx>
 #include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/uint_128.hxx>
+#include <format>
 #include <future>
 #include <gtest/gtest.h>
 #include <random>
@@ -270,6 +272,49 @@ TEST(CryptoTest, Aes256Gcm) {
   f.bytes.back() ^= 0x01;
   std::vector<uint8_t> bad;
   EXPECT_FALSE(decrypt_aead_gcm(k, f.bytes.data(), f.bytes.size(), bad));
+}
+
+TEST(CryptoTest, DiffieHellman_AesGcm_EndToEnd) {
+  // Alice & Bob create their key pairs
+  DiffieHellman alice;
+  DiffieHellman bob;
+
+  auto alicePub = alice.getRawPublicKey();
+  auto bobPub = bob.getRawPublicKey();
+
+  // Each side considers it a common secret
+  auto aliceSecret =
+      alice.computeSharedSecretFromRaw(bobPub.data(), bobPub.size());
+  auto bobSecret =
+      bob.computeSharedSecretFromRaw(alicePub.data(), alicePub.size());
+
+  ASSERT_EQ(aliceSecret, bobSecret);
+  ASSERT_FALSE(aliceSecret.empty());
+
+  // Create a symmetric key AES-256-GCM
+  SymKey sym{};
+  std::memcpy(sym.bytes, aliceSecret.data(),
+              min(sizeof(sym.bytes), aliceSecret.size()));
+
+  // Alice encrypts the message
+  const std::string message = "Hello, Bob!";
+  Frame frame;
+  ASSERT_TRUE(
+      encrypt_aead_gcm(sym, Alg::AES_256_GCM,
+                       reinterpret_cast<const std::uint8_t*>(message.data()),
+                       message.size(), frame));
+
+  ASSERT_FALSE(frame.bytes.empty());
+
+  // Bob decrypts
+  std::vector<std::uint8_t> decrypted;
+  ASSERT_TRUE(
+      decrypt_aead_gcm(sym, frame.bytes.data(), frame.bytes.size(), decrypted));
+
+  std::string decryptedMsg(decrypted.begin(), decrypted.end());
+  Logger::print_info("CryptoTest::DiffieHellman_AesGcm_EndToEnd", std::format("{}:{}",
+                     decryptedMsg, message).c_str());
+  EXPECT_EQ(decryptedMsg, message);
 }
 
 TEST(PacketTest, RoundTrip) {
