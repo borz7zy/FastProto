@@ -1,4 +1,3 @@
-#include <chrono>
 #include <cstring>
 #include <fast_proto/crypto/crypto.hxx>
 #include <fast_proto/crypto/diffie_hellman.hxx>
@@ -7,7 +6,6 @@
 #include <fast_proto/net/tcp_client.hxx>
 #include <fast_proto/net/tcp_server.hxx>
 #include <fast_proto/uint_128.hxx>
-#include <fast_proto/utils/thread_pool.hxx>
 #include <future>
 #include <gtest/gtest.h>
 #include <random>
@@ -337,7 +335,7 @@ TEST(NetworkTest, ServerClientEcho) {
     } catch (const std::future_error&) {}
   });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
   bool connected = false;
   for (size_t i = 0; i < 50 && !connected; ++i) {

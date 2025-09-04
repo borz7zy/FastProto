@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <optional>
 
 namespace FastProto::net {
 
@@ -117,6 +118,8 @@ struct TcpClient::Impl {
 
   std::deque<std::shared_ptr<std::vector<uint8_t>>> out_q;
   bool writing = false;
+
+  std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work_guard;
 };
 
 TcpClient::TcpClient(const std::string& host, uint16_t port)
@@ -133,6 +136,7 @@ bool TcpClient::connect() {
   Impl* impl = impl_.get();
 
   impl->ioc.restart();
+  impl->work_guard.emplace(boost::asio::make_work_guard(impl->ioc));
   impl->io_thread =
       std::make_unique<std::thread>([impl]() { impl->ioc.run(); });
 
@@ -188,6 +192,7 @@ bool TcpClient::connect() {
       impl->io_thread->join();
       impl->io_thread.reset();
     }
+    impl->work_guard.reset();
   }
   return ok;
 }
@@ -211,6 +216,8 @@ void TcpClient::disconnect() {
     impl->io_thread->join();
     impl->io_thread.reset();
   }
+  impl->work_guard.reset();
+
   Logger::print_debug("FastProto", "[Client] Disconnected");
 }
 
