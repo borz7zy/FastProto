@@ -6,15 +6,19 @@
 #include <fast_proto/net/common.hxx>
 #include <functional>
 #include <memory>
-#include <unordered_map>
+#include <unordered_map>s
 #include <vector>
 
 namespace FastProto::net {
 
 class TcpServer {
- public:
+public:
+  using DisconnectClientFn = std::function<void(std::intptr_t)>;
+
   explicit TcpServer(std::uint16_t port);
   ~TcpServer();
+
+  void set_disconnect_handler(DisconnectClientFn fn);
 
   void register_handler(std::uint32_t opcode, common::PacketHandlerFn fn);
   void broadcast(const FastProto::Packet& packet);
@@ -32,6 +36,9 @@ class TcpServer {
   std::uint16_t port_;
   std::atomic<bool> running_{false};
   std::unordered_map<std::uint32_t, common::PacketHandlerFn> handlers_;
+
+  void notify_disconnect(std::intptr_t fd);
+  DisconnectClientFn on_disconnect_;
 };
 
 }

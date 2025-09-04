@@ -124,9 +124,13 @@ struct TcpServer::Impl {
     }
 
     void close() {
+      auto fd = static_cast<std::intptr_t>(socket.native_handle());
+
       boost::system::error_code ignored;
       socket.shutdown(tcp::socket::shutdown_both, ignored);
       socket.close(ignored);
+
+      owner.notify_disconnect(fd);
     }
   };
 
@@ -218,6 +222,10 @@ void TcpServer::register_handler(uint32_t opcode, common::PacketHandlerFn fn) {
   handlers_[opcode] = std::move(fn);
 }
 
+void TcpServer::set_disconnect_handler(DisconnectClientFn fn) {
+  on_disconnect_ = std::move(fn);
+}
+
 void TcpServer::broadcast(const FastProto::Packet& packet) {
   const auto payload = common::serialize_packet(packet);
   const uint32_t nlen = htonl(static_cast<uint32_t>(payload.size()));
@@ -270,6 +278,12 @@ void TcpServer::stop() {
 
   boost::asio::post(impl_->ioc, [impl = impl_.get()]() { impl->stop_all(); });
   impl_->ioc.poll();
+}
+
+void TcpServer::notify_disconnect(std::intptr_t fd) {
+    if (on_disconnect_) {
+    on_disconnect_(fd);
+  }
 }
 
 }
