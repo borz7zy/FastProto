@@ -361,7 +361,7 @@ TEST(NetworkTest, ServerClientEcho) {
 }
 
 TEST(NetworkTest, ServerClientMulticast_Targeted) {
-  using namespace std::chrono_literals;
+  using namespace std::literals::chrono_literals;
 
   constexpr uint16_t port       = 9003;
   constexpr uint32_t OP_HELLO   = 0xBEEF;
