@@ -19,6 +19,7 @@ enum class Type : uint8_t {
   String,
   Float,
   Double,
+  Bytes,
 };
 
 struct Arg {
@@ -35,6 +36,7 @@ struct Arg {
   static Arg make_float(const float& v);
   static Arg make_double(const double& v);
   static Arg make_string(const std::string& s);
+  static Arg make_bytes(const std::vector<std::uint8_t>& data);
 
   [[nodiscard]] bool as_bool() const;
   [[nodiscard]] int16_t as_int16() const;
@@ -46,6 +48,7 @@ struct Arg {
   [[nodiscard]] float as_float() const;
   [[nodiscard]] double as_double() const;
   [[nodiscard]] std::string as_string() const;
+  [[nodiscard]] std::vector<std::uint8_t> as_bytes() const;
 };
 
 struct Packet {

@@ -82,6 +82,13 @@ Arg Arg::make_string(const std::string& s) {
   return a;
 }
 
+Arg Arg::make_bytes(const std::vector<std::uint8_t>& data) {
+  Arg a;
+  a.type_id = Type::Bytes;
+  a.value = data;
+  return a;
+}
+
 bool Arg::as_bool() const {
   if (type_id != Type::Bool) throw std::runtime_error("Arg type mismatch: Bool");
   return value[0] != 0;
@@ -146,6 +153,12 @@ double Arg::as_double() const {
 std::string Arg::as_string() const {
   if (type_id != Type::String) throw std::runtime_error("Arg type mismatch: String");
   return { value.begin(), value.end() };
+}
+
+std::vector<std::uint8_t> Arg::as_bytes() const {
+  if (type_id != Type::Bytes)
+    throw std::runtime_error("Arg type mismatch: Bytes");
+  return value;
 }
 
 }
