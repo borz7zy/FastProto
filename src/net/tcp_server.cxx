@@ -9,8 +9,8 @@
 #include <fast_proto/net/tcp_server.hxx>
 #include <format>
 #include <memory>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 namespace FastProto::net {
 

@@ -15,12 +15,16 @@ class TcpClient {
   explicit TcpClient(const std::string& host, uint16_t port);
   ~TcpClient();
 
-  [[nodiscard]] bool connect();
+  bool connect();
   void disconnect();
 
-  [[nodiscard]] bool send(const FastProto::Packet& pkt) const;
+  bool send(const FastProto::Packet& pkt);
 
   void set_message_handler(common::PacketHandlerFn fn);
+
+  void set_auto_reconnect(bool on);
+  void set_reconnect_backoff(std::chrono::milliseconds min_ms,
+                             std::chrono::milliseconds max_ms);
 
  private:
   struct Impl;
