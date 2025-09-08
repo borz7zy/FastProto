@@ -1,12 +1,12 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <fast_proto/fast_proto.hxx>
+#include <fast_proto/net/common.hxx>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include <fast_proto/fast_proto.hxx>
-#include <fast_proto/net/common.hxx>
 
 namespace FastProto::net {
 
